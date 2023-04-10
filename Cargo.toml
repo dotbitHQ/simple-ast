@@ -7,28 +7,33 @@ edition = "2021"
 default = ["std"]
 std = [
     "num_enum/std",
-    "thiserror/std",
     "das-types-std",
     "hex/std",
+    "serde",
     "serde_json",
+    "strum/std",
+    "thiserror",
 ]
 no_std = [
     "das-types",
     "hex/alloc",
+    "thiserror-no-std",
+    "strum",
 ]
 
 [dependencies]
 # main
-# Temporarily use from thiserror-core: https://github.com/dtolnay/thiserror/issues/196#issuecomment-1345342970
-thiserror = { version = "1.0", package = "thiserror-core", default-features = false }
+# Temporarily use thiserror-no-std
+thiserror = { version = "1.0", optional = true }
+thiserror-no-std = { version = "=2.0.2", default-features = false, optional = true }
 log = "0.4.0"
 hex = { version = "0.4", default-features = false }
-serde = { version = "1.0", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"], optional = true }
 serde_json = { version = "1.0", optional = true }
 # macro
 paste = "1.0"
 num_enum = { version = "0.6", default-features = false }
-strum = { version = "0.24", features = ["derive"] }
+strum = { version = "0.24", features = ["derive"], default-features = false, optional = true }
 # dotbit
 das-types = { path = "../das-types/rust", optional = true }
 das-types-std = { path = "../das-types-std/rust", optional = true }

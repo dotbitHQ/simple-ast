@@ -17,20 +17,39 @@ macro_rules! gen_json_to_uint_fn {
     ($name:ident, $u_type:ty) => {
         #[cfg(feature = "std")]
         pub fn $name(key: String, obj: &serde_json::Value) -> Result<$u_type, ASTError> {
-            match obj.as_u64() {
-                Some(val) => {
-                    if val > <$u_type>::MAX as u64 {
-                        return Err(ASTError::JsonValueError {
-                            key,
-                            val: format!("stringify!($u_type), but got {}", val),
-                        });
-                    }
-                    Ok(val as $u_type)
+            if let Some(val) = obj.as_u64() {
+                if val > <$u_type>::MAX as u64 {
+                    return Err(ASTError::JsonValueError {
+                        key,
+                        val: format!("stringify!($u_type), but got {}", val),
+                    });
                 }
-                None => Err(ASTError::JsonValueError {
+                Ok(val as $u_type)
+            } else if let Some(val) = obj.as_str() {
+                // Support string format uint, for example 1_000_000_000
+                let number_str = val.replace("_", "");
+                match number_str.parse::<u64>() {
+                    Ok(val) => {
+                        if val > <$u_type>::MAX as u64 {
+                            return Err(ASTError::JsonValueError {
+                                key,
+                                val: format!("stringify!($u_type), but got {}", val),
+                            });
+                        }
+                        Ok(val as $u_type)
+                    },
+                    Err(_) => {
+                        Err(ASTError::JsonValueError {
+                            key,
+                            val: String::from(stringify!($u_type)),
+                        })
+                    }
+                }
+            } else {
+                Err(ASTError::JsonValueError {
                     key,
                     val: String::from(stringify!($u_type)),
-                }),
+                })
             }
         }
     };
@@ -558,6 +577,15 @@ pub fn mol_reader_to_sub_account_rules(
     }
 
     Ok(tmp)
+}
+
+pub fn sub_account_rules_to_mol_entity(rules: Vec<SubAccountRule>) -> Result<packed::SubAccountRules, ASTError> {
+    let mut tmp = vec![];
+    for rule in rules.into_iter() {
+        tmp.push(rule.into());
+    }
+
+    Ok(packed::SubAccountRules::new_builder().set(tmp).build())
 }
 
 #[cfg(feature = "std")]

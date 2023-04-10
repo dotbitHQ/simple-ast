@@ -1,7 +1,11 @@
+#[cfg(feature = "std")]
+use thiserror::Error;
+#[cfg(feature = "no_std")]
+use thiserror_no_std::Error;
+
 #[cfg(feature = "no_std")]
 use alloc::string::String;
 
-use thiserror::Error;
 
 use crate::types::*;
 

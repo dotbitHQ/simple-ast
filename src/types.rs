@@ -5,12 +5,17 @@ use alloc::string::String;
 use das_types::{constants::*, packed, prelude::*};
 #[cfg(feature = "std")]
 use das_types_std::{constants::*, packed, prelude::*};
+#[cfg(feature = "std")]
+use serde::{Serialize, Deserialize, Serializer};
+#[cfg(feature = "std")]
+use serde::ser::{SerializeStruct, SerializeSeq};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
-use serde::{Deserialize, Serialize};
 use strum::{Display, EnumString};
 
 use crate::error::ASTError;
 
+#[cfg_attr(feature = "std", derive(Deserialize))]
+#[derive(Debug, Clone)]
 pub struct SubAccountRule {
     pub index: u32,
     pub name: String,
@@ -31,6 +36,28 @@ impl Into<packed::SubAccountRule> for SubAccountRule {
     }
 }
 
+#[cfg(feature = "std")]
+impl Serialize for SubAccountRule {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("SubAccountRule", 5)?;
+        state.serialize_field("index", &self.index)?;
+        state.serialize_field("name", &self.name)?;
+        state.serialize_field("note", &self.note)?;
+
+        if self.price > u32::MAX as u64 {
+            state.serialize_field("price", &self.price.to_string())?;
+        } else {
+            state.serialize_field("price", &self.price)?;
+        }
+
+        state.serialize_field("ast", &self.ast)?;
+        state.end()
+    }
+}
+
 #[derive(Debug, Eq, PartialEq, IntoPrimitive, TryFromPrimitive, EnumString, Display)]
 #[strum(serialize_all = "snake_case")]
 #[repr(u8)]
@@ -47,6 +74,8 @@ impl Into<packed::Byte> for ExpressionType {
     }
 }
 
+#[cfg_attr(feature = "std", derive(Deserialize))]
+#[derive(Debug, Clone)]
 pub enum Expression {
     Operator(OperatorExpression),
     Function(FunctionExpression),
@@ -82,23 +111,47 @@ impl Into<packed::ASTExpression> for Expression {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, IntoPrimitive, TryFromPrimitive, EnumString, Display)]
+#[cfg(feature = "std")]
+impl Serialize for Expression {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            Expression::Operator(expr) => expr.serialize(serializer),
+            Expression::Function(expr) => expr.serialize(serializer),
+            Expression::Variable(expr) => expr.serialize(serializer),
+            Expression::Value(expr) => expr.serialize(serializer),
+        }
+    }
+}
+
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, IntoPrimitive, TryFromPrimitive, EnumString, Display)]
 #[repr(u8)]
 pub enum SymbolType {
+    #[cfg_attr(feature = "std", serde(rename(serialize = "not", deserialize = "not")))]
     #[strum(serialize = "not")]
     Not,
+    #[cfg_attr(feature = "std", serde(rename(serialize = "and", deserialize = "and")))]
     #[strum(serialize = "and")]
     And,
+    #[cfg_attr(feature = "std", serde(rename(serialize = "or", deserialize = "or")))]
     #[strum(serialize = "or")]
     Or,
+    #[cfg_attr(feature = "std", serde(rename(serialize = ">", deserialize = ">")))]
     #[strum(serialize = ">")]
     Gt,
+    #[cfg_attr(feature = "std", serde(rename(serialize = ">=", deserialize = ">=")))]
     #[strum(serialize = ">=")]
     Gte,
+    #[cfg_attr(feature = "std", serde(rename(serialize = "<", deserialize = "<")))]
     #[strum(serialize = "<")]
     Lt,
+    #[cfg_attr(feature = "std", serde(rename(serialize = "<=", deserialize = "<=")))]
     #[strum(serialize = "<=")]
     Lte,
+    #[cfg_attr(feature = "std", serde(rename(serialize = "==", deserialize = "==")))]
     #[strum(serialize = "==")]
     Equal,
 }
@@ -109,6 +162,8 @@ impl Into<packed::Byte> for SymbolType {
     }
 }
 
+#[cfg_attr(feature = "std", derive(Deserialize))]
+#[derive(Debug, Clone)]
 pub struct OperatorExpression {
     pub symbol: SymbolType,
     pub expressions: Vec<Expression>,
@@ -127,7 +182,26 @@ impl Into<packed::ASTOperator> for OperatorExpression {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, IntoPrimitive, TryFromPrimitive, EnumString, Display)]
+#[cfg(feature = "std")]
+impl Serialize for OperatorExpression {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        #[cfg(feature = "std")]
+        {
+            let mut state = serializer.serialize_struct("OperatorExpression", 3)?;
+            state.serialize_field("type", "operator")?;
+            state.serialize_field("symbol", &self.symbol)?;
+            state.serialize_field("expressions", &self.expressions)?;
+            state.end()
+        }
+    }
+}
+
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, IntoPrimitive, TryFromPrimitive, EnumString, Display)]
+#[cfg_attr(feature = "std", serde(rename_all = "snake_case"))]
 #[strum(serialize_all = "snake_case")]
 #[repr(u8)]
 pub enum FnName {
@@ -142,6 +216,8 @@ impl Into<packed::Byte> for FnName {
     }
 }
 
+#[cfg_attr(feature = "std", derive(Deserialize))]
+#[derive(Debug, Clone)]
 pub struct FunctionExpression {
     pub name: FnName,
     pub arguments: Vec<Expression>,
@@ -160,7 +236,23 @@ impl Into<packed::ASTFunction> for FunctionExpression {
     }
 }
 
-#[derive(Debug, Eq, PartialEq, IntoPrimitive, TryFromPrimitive, EnumString, Display)]
+#[cfg(feature = "std")]
+impl Serialize for FunctionExpression {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("FunctionExpression", 3)?;
+        state.serialize_field("type", "function")?;
+        state.serialize_field("name", &self.name)?;
+        state.serialize_field("arguments", &self.arguments)?;
+        state.end()
+    }
+}
+
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, IntoPrimitive, TryFromPrimitive, EnumString, Display)]
+#[cfg_attr(feature = "std", serde(rename_all = "snake_case"))]
 #[strum(serialize_all = "snake_case")]
 #[repr(u8)]
 pub enum VarName {
@@ -175,6 +267,8 @@ impl Into<packed::Byte> for VarName {
     }
 }
 
+#[cfg_attr(feature = "std", derive(Deserialize))]
+#[derive(Debug, Clone)]
 pub struct VariableExpression {
     pub name: VarName,
 }
@@ -185,9 +279,24 @@ impl Into<packed::ASTVariable> for VariableExpression {
     }
 }
 
+#[cfg(feature = "std")]
+impl Serialize for VariableExpression {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("VariableExpression", 2)?;
+        state.serialize_field("type", "variable")?;
+        state.serialize_field("name", &self.name)?;
+        state.end()
+    }
+}
+
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
 #[derive(
-    Debug, Copy, Clone, PartialEq, Serialize, Deserialize, IntoPrimitive, TryFromPrimitive, Display, EnumString,
+    Debug, Copy, Clone, PartialEq, IntoPrimitive, TryFromPrimitive, Display, EnumString,
 )]
+#[cfg_attr(feature = "std", serde(rename_all = "snake_case"))]
 #[repr(u8)]
 #[strum(serialize_all = "snake_case")]
 pub enum ValueType {
@@ -196,9 +305,11 @@ pub enum ValueType {
     Uint32,
     Uint64,
     Binary,
+    #[cfg_attr(feature = "std", serde(rename(serialize = "binary[]", deserialize = "binary[]")))]
     #[strum(serialize = "binary[]")]
     BinaryVec,
     String,
+    #[cfg_attr(feature = "std", serde(rename(serialize = "string[]", deserialize = "string[]")))]
     #[strum(serialize = "string[]")]
     StringVec,
     CharsetType,
@@ -210,7 +321,8 @@ impl Into<packed::Byte> for ValueType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "std", derive(Deserialize))]
+#[derive(Debug, Clone)]
 pub struct ValueExpression {
     pub value_type: ValueType,
     pub value: Value,
@@ -225,7 +337,22 @@ impl Into<packed::ASTValue> for ValueExpression {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg(feature = "std")]
+impl Serialize for ValueExpression {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("ValueExpression", 3)?;
+        state.serialize_field("type", "value")?;
+        state.serialize_field("value_type", &self.value_type)?;
+        state.serialize_field("value", &self.value)?;
+        state.end()
+    }
+}
+
+#[cfg_attr(feature = "std", derive(Deserialize))]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Bool(bool),
     Uint8(u8),
@@ -354,6 +481,48 @@ impl Into<packed::Bytes> for Value {
     }
 }
 
+#[cfg(feature = "std")]
+impl Serialize for Value {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            Value::Bool(val) => serializer.serialize_bool(*val),
+            Value::Uint8(val) => serializer.serialize_u8(*val),
+            Value::Uint32(val) => serializer.serialize_u32(*val),
+            Value::Uint64(val) => {
+                if *val > u32::MAX as u64 {
+                    serializer.serialize_str(&val.to_string())
+                } else {
+                    serializer.serialize_u64(*val)
+                }
+            },
+            Value::Binary(val) => {
+                let hex = hex::encode(val);
+                serializer.serialize_str(&format!("0x{}", hex))
+            },
+            Value::BinaryVec(val) => {
+                let mut seq = serializer.serialize_seq(Some(val.len()))?;
+                for item in val {
+                    seq.serialize_element(&format!("0x{}", hex::encode(item)))?;
+                }
+                seq.end()
+            },
+            Value::String(val) => serializer.serialize_str(val),
+            Value::StringVec(val) => {
+                let mut seq = serializer.serialize_seq(Some(val.len()))?;
+                for item in val {
+                    seq.serialize_element(item)?;
+                }
+                seq.end()
+            },
+            Value::CharsetType(val) => serializer.serialize_str(&val.to_string()),
+        }
+    }
+}
+
+
 #[cfg(test)]
 mod test {
     use serde_json::json;
@@ -478,42 +647,98 @@ mod test {
         ));
     }
 
-    #[test]
-    fn test_value_from_json() {
-        let expected_json = json!({
-            "type": "value",
-            "value_type": "uint8",
-            "value": u8::MAX
-        });
-        let _expected_expr = ValueExpression {
-            value_type: ValueType::Uint8,
-            value: Value::Uint8(u8::MAX),
-        };
+    macro_rules! test_value_from_to_json {
+        (
+            $fn_name:ident,
+            $value_type_json: expr,
+            $value_json: expr,
+            $value_type: expr,
+            $value: expr,
+            $value_pat: pat_param
+        ) => {
+            paste::paste! {
+                #[test]
+                fn [<test_ $fn_name _from_to_json>]() {
+                    let expected_json = json!({
+                        "type": "value",
+                        "value_type": $value_type_json,
+                        "value": $value_json,
+                    });
+                    let expected_expr = ValueExpression {
+                        value_type: $value_type,
+                        value: $value,
+                    };
 
-        let value = util::json_to_value(String::new(), &expected_json).unwrap();
-        assert!(matches!(
-            value,
-            ValueExpression {
-                value_type: ValueType::Uint8,
-                value: Value::Uint8(u8::MAX),
+                    let value = util::json_to_value(String::new(), &expected_json).unwrap();
+                    assert!(matches!(
+                        value,
+                        ValueExpression {
+                            value_type: $value_type,
+                            value: $value_pat,
+                        }
+                    ));
+
+                    let json = serde_json::to_value(&expected_expr).unwrap();
+                    assert_eq!(expected_json, json);
+                }
             }
-        ));
+        };
+        ($value_type_json: expr, $value_json: expr, $value_type: expr, $value: expr) => {
+            paste::paste! {
+                #[test]
+                fn [<test_ $value_type_json _from_to_json>]() {
+                    let expected_json = json!({
+                        "type": "value",
+                        "value_type": $value_type_json,
+                        "value": $value_json,
+                    });
+                    let expected_expr = ValueExpression {
+                        value_type: $value_type,
+                        value: $value,
+                    };
+
+                    let value = util::json_to_value(String::new(), &expected_json).unwrap();
+                    assert!(matches!(
+                        value,
+                        ValueExpression {
+                            value_type: $value_type,
+                            value: $value,
+                        }
+                    ));
+
+                    let json = serde_json::to_value(&expected_expr).unwrap();
+                    assert_eq!(expected_json, json);
+                }
+            }
+        };
     }
 
+    test_value_from_to_json!("bool", true, ValueType::Bool, Value::Bool(true));
+    test_value_from_to_json!("uint8", u8::MAX, ValueType::Uint8, Value::Uint8(u8::MAX));
+    test_value_from_to_json!("uint32", u32::MAX, ValueType::Uint32, Value::Uint32(u32::MAX));
+    test_value_from_to_json!("uint64", "100000000000", ValueType::Uint64, Value::Uint64(100_000_000_000u64));
+    test_value_from_to_json!(binary, "binary", "0x1234", ValueType::Binary, Value::Binary(vec![0x12, 0x34]), Value::Binary(_));
+    test_value_from_to_json!(binary_vec, "binary[]", ["0x1234", "0x5678"], ValueType::BinaryVec, Value::BinaryVec(vec![vec![0x12, 0x34], vec![0x56, 0x78]]), Value::BinaryVec(_));
+    test_value_from_to_json!(string, "string", "text", ValueType::String, Value::String(String::from("text")), Value::String(_));
+    test_value_from_to_json!(string_vec, "string[]", ["text1", "text2"], ValueType::StringVec, Value::StringVec(vec![String::from("text1"), String::from("text2")]), Value::StringVec(_));
+
     #[test]
-    fn test_variable_from_json() {
+    fn test_variable_from_to_json() {
         let expected_json = json!({
             "type": "variable",
             "name": "account",
         });
-        let _expected_expr = VariableExpression { name: VarName::Account };
+        let expected_expr = VariableExpression { name: VarName::Account };
 
         let value = util::json_to_variable(String::new(), &expected_json).unwrap();
         assert!(matches!(value, VariableExpression { name: VarName::Account }));
+
+        let json = serde_json::to_value(&expected_expr).unwrap();
+        assert_eq!(expected_json, json);
     }
 
     #[test]
-    fn test_function_from_json() {
+    fn test_function_from_to_json() {
         let expected_json = json!({
             "type": "function",
             "name": "only_include_charset",
@@ -548,22 +773,24 @@ mod test {
             arguments: args,
         } if args.len() == 2));
         assert!(matches!(
-            &value.arguments[0],
-            Expression::Variable(VariableExpression {
-                name: VarName::AccountChars,
-            })
+            value.arguments.as_slice(),
+            [
+                Expression::Variable(VariableExpression {
+                    name: VarName::AccountChars,
+                }),
+                Expression::Value(ValueExpression {
+                    value_type: ValueType::CharsetType,
+                    value: Value::CharsetType(CharSetType::Emoji),
+                }),
+            ]
         ));
-        assert!(matches!(
-            &value.arguments[1],
-            Expression::Value(ValueExpression {
-                value_type: ValueType::CharsetType,
-                value: Value::CharsetType(CharSetType::Emoji),
-            })
-        ));
+
+        let json = serde_json::to_value(&value).unwrap();
+        assert_eq!(expected_json, json);
     }
 
     #[test]
-    fn test_operator_from_json() {
+    fn test_operator_from_to_json() {
         let expected_json = json!({
             "type": "operator",
             "symbol": "and",
@@ -576,11 +803,11 @@ mod test {
                 {
                     "type": "value",
                     "value_type": "bool",
-                    "value": true,
+                    "value": false,
                 },
             ],
         });
-        let _expected_expr = OperatorExpression {
+        let expected_expr = OperatorExpression {
             symbol: SymbolType::And,
             expressions: vec![
                 Expression::Value(ValueExpression {
@@ -589,7 +816,7 @@ mod test {
                 }),
                 Expression::Value(ValueExpression {
                     value_type: ValueType::Bool,
-                    value: Value::Bool(true),
+                    value: Value::Bool(false),
                 }),
             ],
         };
@@ -600,19 +827,21 @@ mod test {
             expressions: args,
         } if args.len() == 2));
         assert!(matches!(
-            &value.expressions[0],
-            Expression::Value(ValueExpression {
-                value_type: ValueType::Bool,
-                value: Value::Bool(true),
-            })
+            value.expressions.as_slice(),
+            [
+                Expression::Value(ValueExpression {
+                    value_type: ValueType::Bool,
+                    value: Value::Bool(true),
+                }),
+                Expression::Value(ValueExpression {
+                    value_type: ValueType::Bool,
+                    value: Value::Bool(false),
+                })
+            ]
         ));
-        assert!(matches!(
-            &value.expressions[1],
-            Expression::Value(ValueExpression {
-                value_type: ValueType::Bool,
-                value: Value::Bool(true),
-            })
-        ));
+
+        let json = serde_json::to_value(&expected_expr).unwrap();
+        assert_eq!(expected_json, json);
     }
 
     // #[test]
@@ -623,38 +852,42 @@ mod test {
     //             "name": "Price of 1 Charactor Emoji DID",
     //             "note": "",
     //             "price": "",
-    //             "ast": [
-    //                 {
-    //                     "type": "operator",
-    //                     "symbol": "and",
-    //                     "expressions": [
-    //                         {
-    //                             "type": "variable",
-    //                             "name": "account_length",
-    //                         },
-    //                         {
-    //                             "type": "value",
-    //                             "value_type": "uint8",
-    //                             "value": 1,
-    //                         },
-    //                     ],
-    //                 },
-    //                 {
-    //                     "type": "function",
-    //                     "name": "only_include_charset",
-    //                     "arguments": [
-    //                         {
-    //                             "type": "variable",
-    //                             "name": "account_chars",
-    //                         },
-    //                         {
-    //                             "type": "value",
-    //                             "value_type": "charset_type",
-    //                             "value": "Emoji",
-    //                         }
-    //                     ],
-    //                 }
-    //             ]
+    //             "ast": {
+    //                 "type": "operator",
+    //                 "symbol": "and",
+    //                 "expressions": [
+    //                     {
+    //                         "type": "operator",
+    //                         "symbol": "==",
+    //                         "expressions": [
+    //                             {
+    //                                 "type": "variable",
+    //                                 "name": "account_length",
+    //                             },
+    //                             {
+    //                                 "type": "value",
+    //                                 "value_type": "uint8",
+    //                                 "value": 1,
+    //                             },
+    //                         ],
+    //                     },
+    //                     {
+    //                         "type": "function",
+    //                         "name": "only_include_charset",
+    //                         "arguments": [
+    //                             {
+    //                                 "type": "variable",
+    //                                 "name": "account_chars",
+    //                             },
+    //                             {
+    //                                 "type": "value",
+    //                                 "value_type": "charset_type",
+    //                                 "value": "Emoji",
+    //                             }
+    //                         ],
+    //                     }
+    //                 ],
+    //             }
     //         }
     //     ]);
 
