@@ -5,11 +5,11 @@ use alloc::string::String;
 use das_types::{constants::*, packed, prelude::*};
 #[cfg(feature = "std")]
 use das_types_std::{constants::*, packed, prelude::*};
-#[cfg(feature = "std")]
-use serde::{Serialize, Deserialize, Serializer};
-#[cfg(feature = "std")]
-use serde::ser::{SerializeStruct, SerializeSeq};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
+#[cfg(feature = "std")]
+use serde::ser::{SerializeSeq, SerializeStruct};
+#[cfg(feature = "std")]
+use serde::{Deserialize, Serialize, Serializer};
 use strum::{Display, EnumString};
 
 use crate::error::ASTError;
@@ -293,9 +293,7 @@ impl Serialize for VariableExpression {
 }
 
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize))]
-#[derive(
-    Debug, Copy, Clone, PartialEq, IntoPrimitive, TryFromPrimitive, Display, EnumString,
-)]
+#[derive(Debug, Copy, Clone, PartialEq, IntoPrimitive, TryFromPrimitive, Display, EnumString)]
 #[cfg_attr(feature = "std", serde(rename_all = "snake_case"))]
 #[repr(u8)]
 #[strum(serialize_all = "snake_case")]
@@ -497,18 +495,18 @@ impl Serialize for Value {
                 } else {
                     serializer.serialize_u64(*val)
                 }
-            },
+            }
             Value::Binary(val) => {
                 let hex = hex::encode(val);
                 serializer.serialize_str(&format!("0x{}", hex))
-            },
+            }
             Value::BinaryVec(val) => {
                 let mut seq = serializer.serialize_seq(Some(val.len()))?;
                 for item in val {
                     seq.serialize_element(&format!("0x{}", hex::encode(item)))?;
                 }
                 seq.end()
-            },
+            }
             Value::String(val) => serializer.serialize_str(val),
             Value::StringVec(val) => {
                 let mut seq = serializer.serialize_seq(Some(val.len()))?;
@@ -516,12 +514,11 @@ impl Serialize for Value {
                     seq.serialize_element(item)?;
                 }
                 seq.end()
-            },
+            }
             Value::CharsetType(val) => serializer.serialize_str(&val.to_string()),
         }
     }
 }
-
 
 #[cfg(test)]
 mod test {
@@ -716,11 +713,44 @@ mod test {
     test_value_from_to_json!("bool", true, ValueType::Bool, Value::Bool(true));
     test_value_from_to_json!("uint8", u8::MAX, ValueType::Uint8, Value::Uint8(u8::MAX));
     test_value_from_to_json!("uint32", u32::MAX, ValueType::Uint32, Value::Uint32(u32::MAX));
-    test_value_from_to_json!("uint64", "100000000000", ValueType::Uint64, Value::Uint64(100_000_000_000u64));
-    test_value_from_to_json!(binary, "binary", "0x1234", ValueType::Binary, Value::Binary(vec![0x12, 0x34]), Value::Binary(_));
-    test_value_from_to_json!(binary_vec, "binary[]", ["0x1234", "0x5678"], ValueType::BinaryVec, Value::BinaryVec(vec![vec![0x12, 0x34], vec![0x56, 0x78]]), Value::BinaryVec(_));
-    test_value_from_to_json!(string, "string", "text", ValueType::String, Value::String(String::from("text")), Value::String(_));
-    test_value_from_to_json!(string_vec, "string[]", ["text1", "text2"], ValueType::StringVec, Value::StringVec(vec![String::from("text1"), String::from("text2")]), Value::StringVec(_));
+    test_value_from_to_json!(
+        "uint64",
+        "100000000000",
+        ValueType::Uint64,
+        Value::Uint64(100_000_000_000u64)
+    );
+    test_value_from_to_json!(
+        binary,
+        "binary",
+        "0x1234",
+        ValueType::Binary,
+        Value::Binary(vec![0x12, 0x34]),
+        Value::Binary(_)
+    );
+    test_value_from_to_json!(
+        binary_vec,
+        "binary[]",
+        ["0x1234", "0x5678"],
+        ValueType::BinaryVec,
+        Value::BinaryVec(vec![vec![0x12, 0x34], vec![0x56, 0x78]]),
+        Value::BinaryVec(_)
+    );
+    test_value_from_to_json!(
+        string,
+        "string",
+        "text",
+        ValueType::String,
+        Value::String(String::from("text")),
+        Value::String(_)
+    );
+    test_value_from_to_json!(
+        string_vec,
+        "string[]",
+        ["text1", "text2"],
+        ValueType::StringVec,
+        Value::StringVec(vec![String::from("text1"), String::from("text2")]),
+        Value::StringVec(_)
+    );
 
     #[test]
     fn test_variable_from_to_json() {

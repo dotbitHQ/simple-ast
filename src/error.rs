@@ -1,11 +1,10 @@
+#[cfg(feature = "no_std")]
+use alloc::string::String;
+
 #[cfg(feature = "std")]
 use thiserror::Error;
 #[cfg(feature = "no_std")]
 use thiserror_no_std::Error;
-
-#[cfg(feature = "no_std")]
-use alloc::string::String;
-
 
 use crate::types::*;
 
@@ -44,11 +43,19 @@ pub enum ASTError {
     #[error("[{key}] The param type should be unique, but {types} found")]
     ParamTypeMismatch { key: String, types: String },
     #[error("[{key}] The length of the param should be {length}, but not {length}")]
-    ParamLengthError { key: String, expected_length: String, length: String },
+    ParamLengthError {
+        key: String,
+        expected_length: String,
+        length: String,
+    },
     #[error("[{key}] The return type should be {type_}")]
     ReturnTypeError { key: String, type_: ValueType },
     #[error("[{key}] The operator {operator} execute failed, reason: {reason}")]
-    OperatorExecuteFailed { key: String, operator: String, reason: String },
+    OperatorExecuteFailed {
+        key: String,
+        operator: String,
+        reason: String,
+    },
     #[error("[{key}] The function {name} execute failed, reason: {reason}")]
     FunctionExecuteFailed { key: String, name: String, reason: String },
     #[error("The values' type are mismatched")]

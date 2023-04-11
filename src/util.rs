@@ -1,5 +1,7 @@
 #[cfg(feature = "no_std")]
 use alloc::{format, string::String};
+#[cfg(feature = "std")]
+use std::str::FromStr;
 
 #[cfg(feature = "no_std")]
 use das_types::{constants::*, packed, prelude::*};
@@ -7,8 +9,6 @@ use das_types::{constants::*, packed, prelude::*};
 use das_types_std::{constants::*, packed, prelude::*};
 #[cfg(feature = "std")]
 use serde_json;
-#[cfg(feature = "std")]
-use std::str::FromStr;
 
 use crate::error::ASTError;
 use crate::types::*;
@@ -37,13 +37,11 @@ macro_rules! gen_json_to_uint_fn {
                             });
                         }
                         Ok(val as $u_type)
-                    },
-                    Err(_) => {
-                        Err(ASTError::JsonValueError {
-                            key,
-                            val: String::from(stringify!($u_type)),
-                        })
                     }
+                    Err(_) => Err(ASTError::JsonValueError {
+                        key,
+                        val: String::from(stringify!($u_type)),
+                    }),
                 }
             } else {
                 Err(ASTError::JsonValueError {
@@ -336,11 +334,10 @@ pub fn mol_reader_to_value(key: String, reader: packed::ASTValueReader) -> Resul
                     })?;
                 let mut text_vec = vec![];
                 for item in bytes_vec_reader.iter() {
-                    let text = String::from_utf8(item.raw_data().to_vec()).map_err(|_| {
-                        ASTError::ParseUtf8StringFailed {
+                    let text =
+                        String::from_utf8(item.raw_data().to_vec()).map_err(|_| ASTError::ParseUtf8StringFailed {
                             key: extended_key.clone(),
-                        }
-                    })?;
+                        })?;
                     text_vec.push(text);
                 }
 
@@ -471,8 +468,7 @@ pub fn json_to_value(key: String, obj: &serde_json::Value) -> Result<ValueExpres
             };
 
             Value::CharsetType(val)
-        }
-        // _ => todo!(),
+        } // _ => todo!(),
     };
 
     Ok(ValueExpression { value_type, value })
@@ -531,8 +527,7 @@ pub fn mol_reader_to_expression(key: String, reader: packed::ASTExpressionReader
                 .map_err(|_| ASTError::BytesToEntityFailed { key: key.clone() })?;
 
             Ok(Expression::Value(mol_reader_to_value(key.clone(), reader)?))
-        }
-        // _ => todo!(),
+        } // _ => todo!(),
     }
 }
 
@@ -615,7 +610,7 @@ pub fn json_to_sub_account_rules(key: String, obj: &serde_json::Value) -> Result
             }
 
             Ok(tmp)
-        },
+        }
         None => {
             return Err(ASTError::JsonValueError {
                 key,
