@@ -27,6 +27,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "95916998c798756098a4eb1b3f2cd510659705a9817bf203d61abd30fbec3e7b"
 
 [[package]]
+name = "blake2b-ref"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "294d17c72e0ba59fad763caa112368d0672083779cdebbb97164f4bb4c1e339a"
+
+[[package]]
 name = "blake2b-rs"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -123,7 +129,7 @@ version = "0.105.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c6b64eff869839aff45741515540e81a0447926d79262a439b5e9d0a5c98ac95"
 dependencies = [
- "blake2b-ref",
+ "blake2b-ref 0.2.1",
  "blake2b-rs",
 ]
 
@@ -597,6 +603,8 @@ dependencies = [
 name = "simple-ast"
 version = "1.0.0"
 dependencies = [
+ "blake2b-ref 0.3.1",
+ "blake2b-rs",
  "das-types",
  "das-types-std",
  "hex",

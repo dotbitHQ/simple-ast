@@ -42,7 +42,7 @@ pub enum ASTError {
     ParamTypeError { key: String, type_: ValueType },
     #[error("[{key}] The param type should be unique, but {types} found")]
     ParamTypeMismatch { key: String, types: String },
-    #[error("[{key}] The length of the param should be {length}, but not {length}")]
+    #[error("[{key}] The length of the param should be {expected_length}, but {length}")]
     ParamLengthError {
         key: String,
         expected_length: String,

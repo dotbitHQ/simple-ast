@@ -13,12 +13,14 @@ std = [
     "serde_json",
     "strum/std",
     "thiserror",
+    "blake2b-rs",
 ]
 no_std = [
     "das-types",
     "hex/alloc",
     "thiserror-no-std",
     "strum",
+    "blake2b-ref",
 ]
 
 [dependencies]
@@ -35,5 +37,7 @@ paste = "1.0"
 num_enum = { version = "0.6", default-features = false }
 strum = { version = "0.24", features = ["derive"], default-features = false, optional = true }
 # dotbit
+blake2b-rs = { version = "0.2", optional = true }
+blake2b-ref = { version = "0.3", optional = true }
 das-types = { path = "../das-types/rust", optional = true }
 das-types-std = { path = "../das-types-std/rust", optional = true }

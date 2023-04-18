@@ -4,6 +4,10 @@ use alloc::{format, string::String};
 use std::str::FromStr;
 
 #[cfg(feature = "no_std")]
+pub use blake2b_ref::{Blake2b, Blake2bBuilder};
+#[cfg(feature = "std")]
+pub use blake2b_rs::{Blake2b, Blake2bBuilder};
+#[cfg(feature = "no_std")]
 use das_types::{constants::*, packed, prelude::*};
 #[cfg(feature = "std")]
 use das_types_std::{constants::*, packed, prelude::*};
@@ -51,6 +55,28 @@ macro_rules! gen_json_to_uint_fn {
             }
         }
     };
+}
+
+const CKB_HASH_LENGTH: usize = 32;
+const CKB_HASH_PERSONALIZATION: &[u8] = b"ckb-default-hash";
+const CKB_HASH_EMPTY: [u8; 32] = [0u8; 32];
+
+pub fn new_blake2b() -> Blake2b {
+    Blake2bBuilder::new(CKB_HASH_LENGTH)
+        .personal(CKB_HASH_PERSONALIZATION)
+        .build()
+}
+
+pub fn blake2b_256<T: AsRef<[u8]>>(s: T) -> [u8; 32] {
+    if s.as_ref().is_empty() {
+        return CKB_HASH_EMPTY;
+    }
+
+    let mut result = [0u8; 32];
+    let mut blake2b = new_blake2b();
+    blake2b.update(s.as_ref());
+    blake2b.finalize(&mut result);
+    result
 }
 
 pub fn hex_to_bytes(key: String, mut input: &str) -> Result<Vec<u8>, ASTError> {
