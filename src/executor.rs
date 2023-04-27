@@ -69,6 +69,11 @@ pub fn match_rule_with_account_chars<'a>(
     account: &str,
 ) -> Result<Option<&'a SubAccountRule>, ASTError> {
     for (i, rule) in rules.iter().enumerate() {
+        match rule.ast {
+            Expression::Function(_) | Expression::Operator(_) => {}
+            _ => return Err(ASTError::FunctionOrOperatorRequired { key: format!("rules[{}].ast", i) }),
+        }
+
         let value = handle_expression(format!("rules[{}].ast", i), &rule.ast, account_chars, account)?;
         let ret = assert_and_get_return!(format!("rules[{}]", i), value, Bool);
 
@@ -223,10 +228,10 @@ fn handle_function(
     account: &str,
 ) -> Result<Value, ASTError> {
     let ret = match function.name {
-        FnName::IncludeChars => {
+        FnName::IncludeChars | FnName::IncludeWords => {
             assert_param_length(key.clone() + ".arguments", function.arguments.len(), 2)?;
 
-            let account_chars_str = handle_expression(
+            let account_chars_value = handle_expression(
                 key.clone() + ".arguments[0]",
                 &function.arguments[0],
                 account_chars,
@@ -239,7 +244,7 @@ fn handle_function(
                 account,
             )?;
 
-            include_chars(account_chars_str, chars).map_err(|err| ASTError::FunctionExecuteFailed {
+            include_chars(account_chars_value, chars).map_err(|err| ASTError::FunctionExecuteFailed {
                 key: key.clone(),
                 name: function.name.to_string(),
                 reason: err.to_string(),
@@ -322,11 +327,11 @@ fn handle_variable(
     Ok(ret)
 }
 
-fn include_chars(account_chars: Value, chars: Value) -> Result<Value, ASTError> {
-    match (account_chars, chars) {
-        (Value::StringVec(account_chars), Value::StringVec(chars)) => {
-            for char in account_chars.iter() {
-                if chars.contains(char) {
+fn include_chars(account: Value, chars: Value) -> Result<Value, ASTError> {
+    match (account, chars) {
+        (Value::String(account), Value::StringVec(chars)) => {
+            for char in chars.iter() {
+                if account.contains(char) {
                     return Ok(Value::Bool(true));
                 }
             }
@@ -437,5 +442,101 @@ mod test {
         }
 
         assert!(ret.is_ok());
+    }
+
+    #[test]
+    fn test_ast_not_function_or_operator() {
+        let rules = vec![SubAccountRule {
+            index: 0,
+            name: "".to_string(),
+            note: "".to_string(),
+            price: 0,
+            ast: Expression::Value(ValueExpression {
+                value_type: ValueType::Bool,
+                value: Value::Bool(true),
+            })
+        }];
+
+        let ret = match_rule_with_account_chars(&rules, packed::AccountChars::default().as_reader(), "");
+        assert!(ret.is_err());
+        assert!(matches!(ret.unwrap_err(), ASTError::FunctionOrOperatorRequired { .. }));
+    }
+
+    #[test]
+    fn test_function_include_chars() {
+        let false_account_chars = Value::String("xxxxx".to_string());
+        let true_account_chars = Value::String("xxxx🌈".to_string());
+        let chars = Value::StringVec(vec!["🌈".to_string(), "✨".to_string()]);
+
+        let ret = include_chars(false_account_chars, chars.clone()).unwrap();
+        assert!(matches!(ret, Value::Bool(false)));
+
+        let ret = include_chars(true_account_chars, chars).unwrap();
+        assert!(matches!(ret, Value::Bool(true)));
+
+        let false_account = Value::String("xxxxxxx".to_string());
+        let true_account = Value::String("metaverse".to_string());
+        let words = Value::StringVec(vec!["uni".to_string(), "meta".to_string()]);
+
+        let ret = include_chars(false_account, words.clone()).unwrap();
+        assert!(matches!(ret, Value::Bool(false)));
+
+        let ret = include_chars(true_account, words).unwrap();
+        assert!(matches!(ret, Value::Bool(true)));
+    }
+
+    #[test]
+    fn test_only_include_charset() {
+        let false_account_chars = packed::AccountChars::new_builder()
+            .push(
+                packed::AccountChar::new_builder()
+                    .char_set_name(packed::Uint32::from(CharSetType::Digit as u32))
+                    .build(),
+            )
+            .push(
+                packed::AccountChar::new_builder()
+                    .char_set_name(packed::Uint32::from(CharSetType::Digit as u32))
+                    .build(),
+            )
+            .push(
+                packed::AccountChar::new_builder()
+                    .char_set_name(packed::Uint32::from(CharSetType::Digit as u32))
+                    .build(),
+            )
+            .push(
+                packed::AccountChar::new_builder()
+                    .char_set_name(packed::Uint32::from(CharSetType::Emoji as u32))
+                    .build(),
+            )
+            .build();
+        let charset = Value::CharsetType(CharSetType::Digit);
+        let ret = only_include_charset(false_account_chars.as_reader(), charset).unwrap();
+        assert!(matches!(ret, Value::Bool(false)));
+
+        let true_account_chars = packed::AccountChars::new_builder()
+            .push(
+                packed::AccountChar::new_builder()
+                    .char_set_name(packed::Uint32::from(CharSetType::Digit as u32))
+                    .build(),
+            )
+            .push(
+                packed::AccountChar::new_builder()
+                    .char_set_name(packed::Uint32::from(CharSetType::Digit as u32))
+                    .build(),
+            )
+            .push(
+                packed::AccountChar::new_builder()
+                    .char_set_name(packed::Uint32::from(CharSetType::Digit as u32))
+                    .build(),
+            )
+            .push(
+                packed::AccountChar::new_builder()
+                    .char_set_name(packed::Uint32::from(CharSetType::Digit as u32))
+                    .build(),
+            )
+            .build();
+        let charset = Value::CharsetType(CharSetType::Digit);
+        let ret = only_include_charset(true_account_chars.as_reader(), charset).unwrap();
+        assert!(matches!(ret, Value::Bool(true)));
     }
 }

@@ -3,6 +3,7 @@ use alloc::string::String;
 
 #[cfg(feature = "no_std")]
 use das_types::{constants::*, packed, prelude::*};
+use das_types_std::constants::CharSetType;
 #[cfg(feature = "std")]
 use das_types_std::{constants::*, packed, prelude::*};
 use num_enum::{IntoPrimitive, TryFromPrimitive};
@@ -29,7 +30,7 @@ impl Into<packed::SubAccountRule> for SubAccountRule {
         packed::SubAccountRuleBuilder::default()
             .index(packed::Uint32::from(self.index))
             .name(packed::Bytes::from(self.name.as_bytes()))
-            .name(packed::Bytes::from(self.note.as_bytes()))
+            .note(packed::Bytes::from(self.note.as_bytes()))
             .price(packed::Uint64::from(self.price))
             .ast(self.ast.into())
             .build()
@@ -206,6 +207,7 @@ impl Serialize for OperatorExpression {
 #[repr(u8)]
 pub enum FnName {
     IncludeChars,
+    IncludeWords,
     OnlyIncludeCharset,
     InList,
 }
@@ -564,7 +566,7 @@ mod test {
 
     #[test]
     fn test_function_from_to_mol() {
-        let expected_bytes = "590000000c0000000d000000014c0000000c000000260000001a0000000c0000000d0000000209000000090000000800000001260000000c0000000d0000000315000000150000000c0000000d000000080400000000000000";
+        let expected_bytes = "590000000c0000000d000000024c0000000c000000260000001a0000000c0000000d0000000209000000090000000800000001260000000c0000000d0000000315000000150000000c0000000d000000080400000000000000";
         let expected_expr = FunctionExpression {
             name: FnName::OnlyIncludeCharset,
             arguments: vec![
@@ -974,5 +976,33 @@ mod test {
         assert!(val1.less_than_or_equal(&val1).unwrap());
         assert!(val2.less_than_or_equal(&val1).unwrap());
         assert!(!val3.less_than_or_equal(&val1).unwrap());
+    }
+
+    #[test]
+    fn test_sub_account_rule_from_to_mol() {
+        let expected_bytes = "5a000000180000001c0000002b0000002f000000370000000a0000000b0000003120e4bd8de8b4a6e688b700000000404b4c0000000000230000000c0000000d0000000312000000120000000c0000000d000000000100000001";
+        let expected_expr = SubAccountRule {
+            index: 10,
+            name: String::from("1 位账户"),
+            note: String::from(""),
+            price: 5_000_000,
+            ast: Expression::Value(ValueExpression {
+                value_type: ValueType::Bool,
+                value: Value::Bool(true),
+            }),
+        };
+
+        let mol: packed::SubAccountRule = expected_expr.into();
+        assert_eq!(expected_bytes, hex::encode(mol.as_slice()));
+
+        let mol = packed::SubAccountRule::from_slice(&hex::decode(expected_bytes).unwrap()).unwrap();
+        let rule = util::mol_reader_to_sub_account_rule(String::from("."), mol.as_reader()).unwrap();
+        assert!(matches!(rule, SubAccountRule {
+            index: 10,
+            name,
+            note,
+            price: 5_000_000,
+            ast: _,
+        } if name == String::from("1 位账户") && note == String::new()));
     }
 }

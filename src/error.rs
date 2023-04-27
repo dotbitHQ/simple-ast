@@ -62,4 +62,6 @@ pub enum ASTError {
     ValueTypeMismatch,
     #[error("The value do not support this operator")]
     ValueOperatorUnsupported,
+    #[error("[{key}] The expression must be a function or operator")]
+    FunctionOrOperatorRequired { key: String },
 }
