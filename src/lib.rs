@@ -7,3 +7,5 @@ pub mod error;
 pub mod executor;
 pub mod types;
 pub mod util;
+#[cfg(feature = "size_util")]
+pub mod size_util;

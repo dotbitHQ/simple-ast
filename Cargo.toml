@@ -3,8 +3,12 @@ name = "simple-ast"
 version = "1.0.0"
 edition = "2021"
 
+[lib]
+name = "simple_ast"
+path = "src/lib.rs"
+
 [features]
-default = ["std"]
+default = ["std", "size_util"]
 std = [
     "num_enum/std",
     "das-types-std",
@@ -22,6 +26,7 @@ no_std = [
     "strum",
     "blake2b-ref",
 ]
+size_util = []
 
 [dependencies]
 # main
@@ -41,3 +46,7 @@ blake2b-rs = { version = "0.2", optional = true }
 blake2b-ref = { version = "0.3", optional = true }
 das-types = { path = "../das-types/rust", optional = true }
 das-types-std = { path = "../das-types-std/rust", optional = true }
+
+[dev-dependencies]
+env_logger = "0.10.0"
+ctor = "0.2.0"
