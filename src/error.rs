@@ -20,6 +20,8 @@ pub enum ASTError {
     BytesToUint32Failed { key: String },
     #[error("[{key}] Parse bytes to uint64 failed")]
     BytesToUint64Failed { key: String },
+    #[error("[{key}] The rule status {type_} is undefined")]
+    UndefinedRuleStatus { key: String, type_: u8 },
     #[error("[{key}] The charset type {type_} is undefined")]
     UndefinedCharSetType { key: String, type_: u32 },
     #[error("[{key}] The expression {type_} is undefined")]

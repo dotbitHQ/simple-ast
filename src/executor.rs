@@ -69,9 +69,17 @@ pub fn match_rule_with_account_chars<'a>(
     account: &str,
 ) -> Result<Option<&'a SubAccountRule>, ASTError> {
     for (i, rule) in rules.iter().enumerate() {
+        if rule.status == SubAccountRuleStatus::Off {
+            continue;
+        }
+
         match rule.ast {
             Expression::Function(_) | Expression::Operator(_) => {}
-            _ => return Err(ASTError::FunctionOrOperatorRequired { key: format!("rules[{}].ast", i) }),
+            _ => {
+                return Err(ASTError::FunctionOrOperatorRequired {
+                    key: format!("rules[{}].ast", i),
+                })
+            }
         }
 
         let value = handle_expression(format!("rules[{}].ast", i), &rule.ast, account_chars, account)?;
@@ -227,68 +235,23 @@ fn handle_function(
     account_chars: packed::AccountCharsReader,
     account: &str,
 ) -> Result<Value, ASTError> {
+    macro_rules! call_fn {
+        ($fn_name: ident, $arg_len: expr) => {{
+            assert_param_length(key.clone() + ".arguments", function.arguments.len(), $arg_len)?;
+            $fn_name(key.clone(), &function.arguments, account_chars, account)
+        }};
+    }
+
     let ret = match function.name {
-        FnName::IncludeChars | FnName::IncludeWords => {
-            assert_param_length(key.clone() + ".arguments", function.arguments.len(), 2)?;
-
-            let account_chars_value = handle_expression(
-                key.clone() + ".arguments[0]",
-                &function.arguments[0],
-                account_chars,
-                account,
-            )?;
-            let chars = handle_expression(
-                key.clone() + ".arguments[1]",
-                &function.arguments[1],
-                account_chars,
-                account,
-            )?;
-
-            include_chars(account_chars_value, chars).map_err(|err| ASTError::FunctionExecuteFailed {
-                key: key.clone(),
-                name: function.name.to_string(),
-                reason: err.to_string(),
-            })?
-        }
-        FnName::OnlyIncludeCharset => {
-            assert_param_length(key.clone() + ".arguments", function.arguments.len(), 2)?;
-
-            let charset = handle_expression(
-                key.clone() + ".arguments[1]",
-                &function.arguments[1],
-                account_chars,
-                account,
-            )?;
-
-            only_include_charset(account_chars, charset).map_err(|err| ASTError::FunctionExecuteFailed {
-                key: key.clone(),
-                name: function.name.to_string(),
-                reason: err.to_string(),
-            })?
-        }
-        FnName::InList => {
-            assert_param_length(key.clone() + ".arguments", function.arguments.len(), 2)?;
-
-            let account_var = handle_expression(
-                key.clone() + ".arguments[0]",
-                &function.arguments[0],
-                account_chars,
-                account,
-            )?;
-            let account_list = handle_expression(
-                key.clone() + ".arguments[1]",
-                &function.arguments[1],
-                account_chars,
-                account,
-            )?;
-
-            in_list(account_var, account_list).map_err(|err| ASTError::FunctionExecuteFailed {
-                key: key.clone(),
-                name: function.name.to_string(),
-                reason: err.to_string(),
-            })?
-        }
-    };
+        FnName::IncludeChars | FnName::IncludeWords => call_fn!(include_chars, 2),
+        FnName::OnlyIncludeCharset => call_fn!(only_include_charset, 2),
+        FnName::InList => call_fn!(in_list, 2),
+    }
+    .map_err(|err| ASTError::FunctionExecuteFailed {
+        key: key.clone(),
+        name: function.name.to_string(),
+        reason: err.to_string(),
+    })?;
 
     if ret.get_type() != ValueType::Bool {
         return Err(ASTError::ReturnTypeError {
@@ -327,8 +290,16 @@ fn handle_variable(
     Ok(ret)
 }
 
-fn include_chars(account: Value, chars: Value) -> Result<Value, ASTError> {
-    match (account, chars) {
+fn include_chars(
+    key: String,
+    arguments: &[Expression],
+    account_chars: packed::AccountCharsReader,
+    account: &str,
+) -> Result<Value, ASTError> {
+    let account_chars_value = handle_expression(key.clone() + ".arguments[0]", &arguments[0], account_chars, account)?;
+    let chars = handle_expression(key.clone() + ".arguments[1]", &arguments[1], account_chars, account)?;
+
+    match (account_chars_value, chars) {
         (Value::String(account), Value::StringVec(chars)) => {
             for char in chars.iter() {
                 if account.contains(char) {
@@ -342,7 +313,14 @@ fn include_chars(account: Value, chars: Value) -> Result<Value, ASTError> {
     }
 }
 
-fn only_include_charset(account_chars: packed::AccountCharsReader, charset: Value) -> Result<Value, ASTError> {
+fn only_include_charset(
+    key: String,
+    arguments: &[Expression],
+    account_chars: packed::AccountCharsReader,
+    account: &str,
+) -> Result<Value, ASTError> {
+    let charset = handle_expression(key.clone() + ".arguments[1]", &arguments[1], account_chars, account)?;
+
     let expected_charset = match charset {
         Value::CharsetType(charset) => charset,
         _ => return Err(ASTError::ValueTypeMismatch),
@@ -363,8 +341,17 @@ fn only_include_charset(account_chars: packed::AccountCharsReader, charset: Valu
     Ok(Value::Bool(true))
 }
 
-fn in_list(account: Value, account_list: Value) -> Result<Value, ASTError> {
-    match (account, account_list) {
+fn in_list(
+    key: String,
+    arguments: &[Expression],
+    account_chars: packed::AccountCharsReader,
+    account: &str,
+) -> Result<Value, ASTError> {
+    let account_var = handle_expression(key.clone() + ".arguments[0]", &arguments[0], account_chars, account)?;
+
+    let account_list = handle_expression(key.clone() + ".arguments[1]", &arguments[1], account_chars, account)?;
+
+    match (account_var, account_list) {
         (Value::String(account), Value::BinaryVec(account_list)) => {
             let hash = blake2b_256(account);
             let account_id = hash[0..20].to_vec();
@@ -379,6 +366,7 @@ mod test {
     use serde_json::json;
 
     use super::*;
+    use das_types_std::types;
     use crate::util;
 
     #[test]
@@ -389,6 +377,7 @@ mod test {
                 "name": "Price of 1 Charactor Emoji DID",
                 "note": "",
                 "price": 100_000_000,
+                "status": 1,
                 "ast": {
                     "type": "operator",
                     "symbol": "and",
@@ -451,10 +440,11 @@ mod test {
             name: "".to_string(),
             note: "".to_string(),
             price: 0,
+            status: SubAccountRuleStatus::On,
             ast: Expression::Value(ValueExpression {
                 value_type: ValueType::Bool,
                 value: Value::Bool(true),
-            })
+            }),
         }];
 
         let ret = match_rule_with_account_chars(&rules, packed::AccountChars::default().as_reader(), "");
@@ -463,80 +453,132 @@ mod test {
     }
 
     #[test]
-    fn test_function_include_chars() {
-        let false_account_chars = Value::String("xxxxx".to_string());
-        let true_account_chars = Value::String("xxxx🌈".to_string());
-        let chars = Value::StringVec(vec!["🌈".to_string(), "✨".to_string()]);
+    fn test_disabled_rule_skipping() {
+        let rules = vec![SubAccountRule {
+            index: 0,
+            name: "".to_string(),
+            note: "".to_string(),
+            price: 0,
+            status: SubAccountRuleStatus::Off,
+            ast: Expression::Operator(OperatorExpression {
+                symbol: SymbolType::And,
+                expressions: vec![
+                    Expression::Value(ValueExpression {
+                        value_type: ValueType::Bool,
+                        value: Value::Bool(true),
+                    }),
+                    Expression::Value(ValueExpression {
+                        value_type: ValueType::Bool,
+                        value: Value::Bool(true),
+                    }),
+                ],
+            }),
+        },
+        SubAccountRule {
+            index: 1,
+            name: "".to_string(),
+            note: "".to_string(),
+            price: 0,
+            status: SubAccountRuleStatus::On,
+            ast: Expression::Operator(OperatorExpression {
+                symbol: SymbolType::And,
+                expressions: vec![
+                    Expression::Value(ValueExpression {
+                        value_type: ValueType::Bool,
+                        value: Value::Bool(true),
+                    }),
+                    Expression::Value(ValueExpression {
+                        value_type: ValueType::Bool,
+                        value: Value::Bool(true),
+                    }),
+                ],
+            }),
+        }];
 
-        let ret = include_chars(false_account_chars, chars.clone()).unwrap();
+        let ret = match_rule_with_account_chars(&rules, packed::AccountChars::default().as_reader(), "").unwrap();
+        assert!(ret.is_some());
+
+        // rules[0] is disabled, so the matched rule should be rules[1]
+        let rule = ret.unwrap();
+        assert_eq!(1, rule.index);
+    }
+
+    #[test]
+    fn test_function_include_chars() {
+        let key = String::from(".");
+        let arguments = vec![
+            Expression::Variable(VariableExpression {
+                name: VarName::Account,
+            }),
+            Expression::Value(ValueExpression {
+                value_type: ValueType::StringVec,
+                value: Value::StringVec(vec!["🌈".to_string(), "✨".to_string()]),
+            }),
+        ];
+        let account_chars = packed::AccountChars::default();
+
+        let false_account = "xxxxx";
+        let true_account = "xxxx🌈";
+
+        let ret = include_chars(key.clone(), &arguments, account_chars.as_reader(), false_account).unwrap();
         assert!(matches!(ret, Value::Bool(false)));
 
-        let ret = include_chars(true_account_chars, chars).unwrap();
+        let ret = include_chars(key.clone(), &arguments, account_chars.as_reader(), true_account).unwrap();
         assert!(matches!(ret, Value::Bool(true)));
 
-        let false_account = Value::String("xxxxxxx".to_string());
-        let true_account = Value::String("metaverse".to_string());
-        let words = Value::StringVec(vec!["uni".to_string(), "meta".to_string()]);
 
-        let ret = include_chars(false_account, words.clone()).unwrap();
+        let arguments = vec![
+            Expression::Variable(VariableExpression {
+                name: VarName::Account,
+            }),
+            Expression::Value(ValueExpression {
+                value_type: ValueType::StringVec,
+                value: Value::StringVec(vec!["uni".to_string(), "meta".to_string()]),
+            }),
+        ];
+
+        let false_account = "xxxxxxx";
+        let true_account = "metaverse";
+
+        let ret = include_chars(key.clone(), &arguments, account_chars.as_reader(), false_account).unwrap();
         assert!(matches!(ret, Value::Bool(false)));
 
-        let ret = include_chars(true_account, words).unwrap();
+        let ret = include_chars(key.clone(), &arguments, account_chars.as_reader(), true_account).unwrap();
         assert!(matches!(ret, Value::Bool(true)));
     }
 
     #[test]
     fn test_only_include_charset() {
-        let false_account_chars = packed::AccountChars::new_builder()
-            .push(
-                packed::AccountChar::new_builder()
-                    .char_set_name(packed::Uint32::from(CharSetType::Digit as u32))
-                    .build(),
-            )
-            .push(
-                packed::AccountChar::new_builder()
-                    .char_set_name(packed::Uint32::from(CharSetType::Digit as u32))
-                    .build(),
-            )
-            .push(
-                packed::AccountChar::new_builder()
-                    .char_set_name(packed::Uint32::from(CharSetType::Digit as u32))
-                    .build(),
-            )
-            .push(
-                packed::AccountChar::new_builder()
-                    .char_set_name(packed::Uint32::from(CharSetType::Emoji as u32))
-                    .build(),
-            )
-            .build();
-        let charset = Value::CharsetType(CharSetType::Digit);
-        let ret = only_include_charset(false_account_chars.as_reader(), charset).unwrap();
+        let key = String::from(".");
+        let arguments = vec![
+            Expression::Variable(VariableExpression {
+                name: VarName::AccountChars,
+            }),
+            Expression::Value(ValueExpression {
+                value_type: ValueType::CharsetType,
+                value: Value::CharsetType(CharSetType::Digit),
+            }),
+        ];
+        let false_account_chars: packed::AccountChars = vec![
+            types::AccountChar { char_set_type: CharSetType::Digit, char: String::new() },
+            types::AccountChar { char_set_type: CharSetType::Digit, char: String::new() },
+            types::AccountChar { char_set_type: CharSetType::Digit, char: String::new() },
+            types::AccountChar { char_set_type: CharSetType::Emoji, char: String::new() },
+        ].into();
+        let account = "111✨";
+
+        let ret = only_include_charset(key.clone(), &arguments, false_account_chars.as_reader(), account).unwrap();
         assert!(matches!(ret, Value::Bool(false)));
 
-        let true_account_chars = packed::AccountChars::new_builder()
-            .push(
-                packed::AccountChar::new_builder()
-                    .char_set_name(packed::Uint32::from(CharSetType::Digit as u32))
-                    .build(),
-            )
-            .push(
-                packed::AccountChar::new_builder()
-                    .char_set_name(packed::Uint32::from(CharSetType::Digit as u32))
-                    .build(),
-            )
-            .push(
-                packed::AccountChar::new_builder()
-                    .char_set_name(packed::Uint32::from(CharSetType::Digit as u32))
-                    .build(),
-            )
-            .push(
-                packed::AccountChar::new_builder()
-                    .char_set_name(packed::Uint32::from(CharSetType::Digit as u32))
-                    .build(),
-            )
-            .build();
-        let charset = Value::CharsetType(CharSetType::Digit);
-        let ret = only_include_charset(true_account_chars.as_reader(), charset).unwrap();
+        let true_account_chars: packed::AccountChars = vec![
+            types::AccountChar { char_set_type: CharSetType::Digit, char: String::new() },
+            types::AccountChar { char_set_type: CharSetType::Digit, char: String::new() },
+            types::AccountChar { char_set_type: CharSetType::Digit, char: String::new() },
+            types::AccountChar { char_set_type: CharSetType::Digit, char: String::new() },
+        ].into();
+        let account = "1111";
+
+        let ret = only_include_charset(key.clone(), &arguments, true_account_chars.as_reader(), account).unwrap();
         assert!(matches!(ret, Value::Bool(true)));
     }
 }

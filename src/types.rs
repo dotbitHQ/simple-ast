@@ -15,12 +15,21 @@ use strum::{Display, EnumString};
 use crate::error::ASTError;
 
 #[cfg_attr(feature = "std", derive(Deserialize))]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, IntoPrimitive, TryFromPrimitive, Display)]
+#[repr(u8)]
+pub enum SubAccountRuleStatus {
+    Off,
+    On,
+}
+
+#[cfg_attr(feature = "std", derive(Deserialize))]
 #[derive(Debug, Clone)]
 pub struct SubAccountRule {
     pub index: u32,
     pub name: String,
     pub note: String,
     pub price: u64,
+    pub status: SubAccountRuleStatus,
     pub ast: Expression,
 }
 
@@ -31,6 +40,7 @@ impl Into<packed::SubAccountRule> for SubAccountRule {
             .name(packed::Bytes::from(self.name.as_bytes()))
             .note(packed::Bytes::from(self.note.as_bytes()))
             .price(packed::Uint64::from(self.price))
+            .status(packed::Uint8::from(self.status as u8))
             .ast(self.ast.into())
             .build()
     }
@@ -52,6 +62,8 @@ impl Serialize for SubAccountRule {
         } else {
             state.serialize_field("price", &self.price)?;
         }
+
+        state.serialize_field("status", &(self.status as u8))?;
 
         state.serialize_field("ast", &self.ast)?;
         state.end()
@@ -979,12 +991,13 @@ mod test {
 
     #[test]
     fn test_sub_account_rule_from_to_mol() {
-        let expected_bytes = "5a000000180000001c0000002b0000002f000000370000000a0000000b0000003120e4bd8de8b4a6e688b700000000404b4c0000000000230000000c0000000d0000000312000000120000000c0000000d000000000100000001";
+        let expected_bytes = "5f0000001c000000200000002f000000330000003b0000005e0000000a0000000b0000003120e4bd8de8b4a6e688b700000000404b4c0000000000230000000c0000000d0000000312000000120000000c0000000d00000000010000000101";
         let expected_expr = SubAccountRule {
             index: 10,
             name: String::from("1 位账户"),
             note: String::from(""),
             price: 5_000_000,
+            status: SubAccountRuleStatus::On,
             ast: Expression::Value(ValueExpression {
                 value_type: ValueType::Bool,
                 value: Value::Bool(true),
@@ -1001,6 +1014,7 @@ mod test {
             name,
             note,
             price: 5_000_000,
+            status: SubAccountRuleStatus::On,
             ast: _,
         } if name == String::from("1 位账户") && note == String::new()));
     }

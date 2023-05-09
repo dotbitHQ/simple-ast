@@ -1,5 +1,6 @@
-use crate::types::*;
 use log::debug;
+
+use crate::types::*;
 
 const MOL_HEADER_LENGTH_SIZE: usize = 4;
 const MOL_HEADER_OFFSET_SIZE: usize = 4;
@@ -21,6 +22,7 @@ pub fn calc_rule_size(key: String, rule: &SubAccountRule) -> usize {
         + MOL_HEADER_OFFSET_SIZE + calc_string_size(key.clone() + ".name", &rule.name) // these are bytes for name field
         + MOL_HEADER_OFFSET_SIZE + calc_string_size(key.clone() + ".note", &rule.note) // these are bytes for note field
         + MOL_HEADER_OFFSET_SIZE + 8 // these are bytes for price field
+        + MOL_HEADER_OFFSET_SIZE + 1 // these are bytes for status field
         + MOL_HEADER_OFFSET_SIZE + calc_expression_size(key.clone() + ".ast", &rule.ast); // these are bytes for ast field
 
     debug!("L{} {}: {}", line!(), key, size);
@@ -31,7 +33,7 @@ pub fn calc_rule_size(key: String, rule: &SubAccountRule) -> usize {
 pub fn calc_expression_size(key: String, expression: &Expression) -> usize {
     let mut size = MOL_HEADER_LENGTH_SIZE + MOL_HEADER_OFFSET_SIZE * 2 // these are bytes for ASTExpression header
         + 1  // 1 byte for expression_type
-        + MOL_HEADER_LENGTH_SIZE;  // the header of Bytes
+        + MOL_HEADER_LENGTH_SIZE; // the header of Bytes
     match expression {
         Expression::Operator(operator_expr) => {
             size += calc_operator_size(key.clone(), operator_expr);
@@ -92,39 +94,39 @@ fn calc_value_size(key: String, value_expr: &ValueExpression) -> usize {
     match value_expr.value {
         Value::Bool(_) => {
             size += MOL_HEADER_LENGTH_SIZE + 1;
-        },
+        }
         Value::Uint8(_) => {
             size += MOL_HEADER_LENGTH_SIZE + 1;
-        },
+        }
         Value::Uint32(_) => {
             size += MOL_HEADER_LENGTH_SIZE + 4;
-        },
+        }
         Value::Uint64(_) => {
             size += MOL_HEADER_LENGTH_SIZE + 8;
-        },
+        }
         Value::String(ref s) => {
             size += calc_string_size(key.clone(), s);
-        },
+        }
         Value::StringVec(ref str_vec) => {
             size += MOL_HEADER_LENGTH_SIZE + // the header of Bytes
                 MOL_HEADER_LENGTH_SIZE + MOL_HEADER_OFFSET_SIZE * str_vec.len(); // the header of BytesVec
             for s in str_vec {
                 size += calc_string_size(key.clone(), s);
             }
-        },
+        }
         Value::Binary(ref b) => {
             size += calc_binary_size(key.clone(), b);
-        },
+        }
         Value::BinaryVec(ref bin_vec) => {
             size += MOL_HEADER_LENGTH_SIZE + // the header of Bytes
                 MOL_HEADER_LENGTH_SIZE + MOL_HEADER_OFFSET_SIZE * bin_vec.len(); // the header of BytesVec
             for b in bin_vec {
                 size += calc_binary_size(key.clone(), b);
             }
-        },
+        }
         Value::CharsetType(_) => {
             size += MOL_HEADER_LENGTH_SIZE + 4;
-        },
+        }
     }
 
     debug!("L{} {}: {}", line!(), key, size);
@@ -146,10 +148,11 @@ pub fn calc_binary_size(key: String, input: &[u8]) -> usize {
 
 #[cfg(test)]
 mod test {
-    use das_types_std::{packed, constants::CharSetType, prelude::Entity};
+    use das_types_std::constants::CharSetType;
+    use das_types_std::packed;
 
-    use super::*;
     use super::super::util;
+    use super::*;
 
     #[ctor::ctor]
     fn init() {
@@ -164,6 +167,7 @@ mod test {
                 name: String::new(),
                 note: String::new(),
                 price: 0,
+                status: SubAccountRuleStatus::On,
                 ast: Expression::Operator(OperatorExpression {
                     symbol: SymbolType::And,
                     expressions: vec![],
@@ -174,14 +178,13 @@ mod test {
                 name: String::new(),
                 note: String::new(),
                 price: 0,
+                status: SubAccountRuleStatus::On,
                 ast: Expression::Operator(OperatorExpression {
                     symbol: SymbolType::And,
                     expressions: vec![],
                 }),
-            }
+            },
         ];
-
-
 
         let mol = util::sub_account_rules_to_mol_entity(rules.clone()).unwrap();
         let size = calc_rules_size(&rules);
@@ -196,6 +199,7 @@ mod test {
             name: String::new(),
             note: String::new(),
             price: 0,
+            status: SubAccountRuleStatus::On,
             ast: Expression::Operator(OperatorExpression {
                 symbol: SymbolType::And,
                 expressions: vec![],
@@ -212,14 +216,15 @@ mod test {
     fn test_calc_expression_size() {
         let expression: Expression = Expression::Operator(OperatorExpression {
             symbol: SymbolType::And,
-            expressions: vec![
-                Expression::Value(ValueExpression { value_type: ValueType::Bool, value: Value::Bool(true) })
-            ],
+            expressions: vec![Expression::Value(ValueExpression {
+                value_type: ValueType::Bool,
+                value: Value::Bool(true),
+            })],
         });
 
         let mol: packed::ASTExpression = expression.clone().into();
         let size = calc_expression_size(String::new(), &expression);
-        println!("mol = {:?}", hex::encode(mol.as_slice()));
+        // println!("mol = {:?}", hex::encode(mol.as_slice()));
         assert_eq!(size, mol.total_size());
     }
 
@@ -250,9 +255,7 @@ mod test {
 
     #[test]
     fn test_calc_variable_size() {
-        let expression = VariableExpression {
-            name: VarName::Account,
-        };
+        let expression = VariableExpression { name: VarName::Account };
         let mol: packed::ASTVariable = expression.clone().into();
         let size = calc_variable_size(String::new(), &expression);
         assert_eq!(size, mol.total_size());
@@ -283,11 +286,7 @@ mod test {
             },
             ValueExpression {
                 value_type: ValueType::StringVec,
-                value: Value::StringVec(vec![
-                    String::from("test"),
-                    String::from("test"),
-                    String::from("test"),
-                ]),
+                value: Value::StringVec(vec![String::from("test"), String::from("test"), String::from("test")]),
             },
             ValueExpression {
                 value_type: ValueType::Binary,
@@ -306,8 +305,8 @@ mod test {
         for expr in expressions.into_iter() {
             let mol: packed::ASTValue = expr.clone().into();
             let size = calc_value_size(String::new(), &expr);
-            println!("type = {:?}", expr.value_type);
-            println!("mol = {:?}", hex::encode(mol.as_slice()));
+            // println!("type = {:?}", expr.value_type);
+            // println!("mol = {:?}", hex::encode(mol.as_slice()));
             assert_eq!(size, mol.total_size());
         }
     }
@@ -325,4 +324,7 @@ mod test {
         let size = calc_string_size(String::new(), "test");
         assert_eq!(size, mol.total_size());
     }
+
+    #[test]
+    fn calc_size() {}
 }

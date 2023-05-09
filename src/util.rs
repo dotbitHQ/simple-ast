@@ -578,12 +578,18 @@ pub fn mol_reader_to_sub_account_rule(
 ) -> Result<SubAccountRule, ASTError> {
     let name = bytes_reader_to_string(key.clone() + ".name", reader.name())?;
     let note = bytes_reader_to_string(key.clone() + ".note", reader.note())?;
+    let status_int = u8::from(reader.status());
+    let status = SubAccountRuleStatus::try_from(status_int).map_err(|_| ASTError::UndefinedRuleStatus {
+        key: key.clone() + ".status",
+        type_: status_int,
+    })?;
 
     Ok(SubAccountRule {
         index: u32::from(reader.index()),
         name,
         note,
         price: u64::from(reader.price()),
+        status,
         ast: mol_reader_to_expression(key + ".ast", reader.ast())?,
     })
 }
@@ -615,13 +621,20 @@ pub fn json_to_sub_account_rule(key: String, obj: &serde_json::Value) -> Result<
     let name = json_to_string(key.clone() + ".name", &obj["name"])?;
     let note = json_to_string(key.clone() + ".note", &obj["note"])?;
     let price = json_to_u64(key.clone() + ".price", &obj["price"])?;
+    let status_int = json_to_u8(key.clone() + ".status", &obj["status"])?;
     let ast = json_to_expression(key.clone() + ".ast", &obj["ast"])?;
+
+    let status = SubAccountRuleStatus::try_from(status_int).map_err(|_| ASTError::UndefinedRuleStatus {
+        key: key + ".status",
+        type_: status_int,
+    })?;
 
     Ok(SubAccountRule {
         index,
         name,
         note,
         price,
+        status,
         ast,
     })
 }
