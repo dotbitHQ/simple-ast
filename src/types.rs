@@ -362,6 +362,8 @@ impl Serialize for ValueExpression {
     }
 }
 
+pub type Binary = Vec<u8>;
+
 #[cfg_attr(feature = "std", derive(Deserialize))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
@@ -369,8 +371,8 @@ pub enum Value {
     Uint8(u8),
     Uint32(u32),
     Uint64(u64),
-    Binary(Vec<u8>),
-    BinaryVec(Vec<Vec<u8>>),
+    Binary(Binary),
+    BinaryVec(Vec<Binary>),
     String(String),
     StringVec(Vec<String>),
     CharsetType(CharSetType),
@@ -410,54 +412,30 @@ impl Value {
         }
     }
 
-    pub fn greater_than(&self, to: &Value) -> Result<bool, ASTError> {
-        if self.get_type() != to.get_type() {
-            return Err(ASTError::ValueTypeMismatch);
-        }
+    pub fn compare(&self, right: &Value, symbol_type: SymbolType) -> Result<bool, ASTError> {
+        let left = self.get_u64();
+        let right = right.get_u64();
 
-        match (self, to) {
-            (Value::Uint8(val1), Value::Uint8(val2)) => Ok(val1 > val2),
-            (Value::Uint32(val1), Value::Uint32(val2)) => Ok(val1 > val2),
-            (Value::Uint64(val1), Value::Uint64(val2)) => Ok(val1 > val2),
+        match (left, right) {
+            (Ok(left), Ok(right)) => {
+                match symbol_type {
+                    SymbolType::Gt => Ok(left > right),
+                    SymbolType::Gte => Ok(left >= right),
+                    SymbolType::Lt => Ok(left < right),
+                    SymbolType::Lte => Ok(left <= right),
+                    SymbolType::Equal => Ok(left == right),
+                    _ => Err(ASTError::ValueOperatorUnsupported),
+                }
+            },
             _ => Err(ASTError::ValueOperatorUnsupported),
         }
     }
 
-    pub fn greater_than_or_equal(&self, to: &Value) -> Result<bool, ASTError> {
-        if self.get_type() != to.get_type() {
-            return Err(ASTError::ValueTypeMismatch);
-        }
-
-        match (self, to) {
-            (Value::Uint8(val1), Value::Uint8(val2)) => Ok(val1 >= val2),
-            (Value::Uint32(val1), Value::Uint32(val2)) => Ok(val1 >= val2),
-            (Value::Uint64(val1), Value::Uint64(val2)) => Ok(val1 >= val2),
-            _ => Err(ASTError::ValueOperatorUnsupported),
-        }
-    }
-
-    pub fn less_than(&self, to: &Value) -> Result<bool, ASTError> {
-        if self.get_type() != to.get_type() {
-            return Err(ASTError::ValueTypeMismatch);
-        }
-
-        match (self, to) {
-            (Value::Uint8(val1), Value::Uint8(val2)) => Ok(val1 < val2),
-            (Value::Uint32(val1), Value::Uint32(val2)) => Ok(val1 < val2),
-            (Value::Uint64(val1), Value::Uint64(val2)) => Ok(val1 < val2),
-            _ => Err(ASTError::ValueOperatorUnsupported),
-        }
-    }
-
-    pub fn less_than_or_equal(&self, to: &Value) -> Result<bool, ASTError> {
-        if self.get_type() != to.get_type() {
-            return Err(ASTError::ValueTypeMismatch);
-        }
-
-        match (self, to) {
-            (Value::Uint8(val1), Value::Uint8(val2)) => Ok(val1 <= val2),
-            (Value::Uint32(val1), Value::Uint32(val2)) => Ok(val1 <= val2),
-            (Value::Uint64(val1), Value::Uint64(val2)) => Ok(val1 <= val2),
+    fn get_u64(&self) -> Result<u64, ASTError> {
+        match self {
+            Value::Uint8(val) => Ok(*val as u64),
+            Value::Uint32(val) => Ok(*val as u64),
+            Value::Uint64(val) => Ok(*val),
             _ => Err(ASTError::ValueOperatorUnsupported),
         }
     }
@@ -948,45 +926,18 @@ mod test {
     }
 
     #[test]
-    fn test_value_greater_than() {
-        let val1 = Value::Uint8(100);
-        let val2 = Value::Uint8(u8::MIN);
-        let val3 = Value::Uint8(u8::MAX);
+    fn test_value_compare() {
+        let mid = Value::Uint8(100);
+        let left = Value::Uint32(99);
+        let right = Value::Uint64(101);
 
-        assert!(val1.greater_than(&val2).unwrap());
-        assert!(!val1.greater_than(&val3).unwrap());
-    }
-
-    #[test]
-    fn test_value_greater_than_or_equal() {
-        let val1 = Value::Uint8(100);
-        let val2 = Value::Uint8(u8::MIN);
-        let val3 = Value::Uint8(u8::MAX);
-
-        assert!(val1.greater_than_or_equal(&val1).unwrap());
-        assert!(val1.greater_than_or_equal(&val2).unwrap());
-        assert!(!val1.greater_than_or_equal(&val3).unwrap());
-    }
-
-    #[test]
-    fn test_value_less_than() {
-        let val1 = Value::Uint8(100);
-        let val2 = Value::Uint8(u8::MIN);
-        let val3 = Value::Uint8(u8::MAX);
-
-        assert!(val2.less_than(&val1).unwrap());
-        assert!(!val3.less_than(&val1).unwrap());
-    }
-
-    #[test]
-    fn test_value_less_than_or_equal() {
-        let val1 = Value::Uint8(100);
-        let val2 = Value::Uint8(u8::MIN);
-        let val3 = Value::Uint8(u8::MAX);
-
-        assert!(val1.less_than_or_equal(&val1).unwrap());
-        assert!(val2.less_than_or_equal(&val1).unwrap());
-        assert!(!val3.less_than_or_equal(&val1).unwrap());
+        assert!(mid.compare(&mid, SymbolType::Equal).unwrap());
+        assert!(mid.compare(&left, SymbolType::Gt).unwrap());
+        assert!(mid.compare(&left, SymbolType::Gte).unwrap());
+        assert!(mid.compare(&mid, SymbolType::Gte).unwrap());
+        assert!(mid.compare(&right, SymbolType::Lt).unwrap());
+        assert!(mid.compare(&right, SymbolType::Lte).unwrap());
+        assert!(mid.compare(&mid, SymbolType::Lte).unwrap());
     }
 
     #[test]

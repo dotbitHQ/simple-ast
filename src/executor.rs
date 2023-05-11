@@ -38,15 +38,15 @@ fn assert_param_length_gte(key: String, length: usize, expected_length: usize) -
     Ok(())
 }
 
-fn assert_param_type_equal(key: String, val_1: &Value, val_2: &Value) -> Result<(), ASTError> {
-    if val_1.get_type() != val_2.get_type() {
-        return Err(ASTError::ParamTypeMismatch {
-            key,
-            types: format!("{}, {}", val_1.get_type(), val_2.get_type()),
-        });
-    }
-
-    Ok(())
+macro_rules! assert_param_expression {
+    ($key: expr, $param: expr, $expr: pat_param, $msg_types: expr) => {
+        if !matches!($param, $expr) {
+            return Err(ASTError::ParamTypeError {
+                key: $key,
+                types: $msg_types,
+            });
+        }
+    };
 }
 
 macro_rules! assert_and_get_return {
@@ -55,8 +55,8 @@ macro_rules! assert_and_get_return {
             Value::$value_type(val) => val,
             _ => {
                 return Err(ASTError::ReturnTypeError {
-                    key: $key.to_string(),
-                    type_: ValueType::$value_type,
+                    key: $key,
+                    types: ValueType::$value_type.to_string(),
                 })
             }
         }
@@ -116,117 +116,117 @@ fn handle_operator(
     account_chars: packed::AccountCharsReader,
     account: &str,
 ) -> Result<Value, ASTError> {
-    macro_rules! compare_values {
-        ($method: ident) => {{
-            assert_param_length(key.clone() + ".expressions", operator.expressions.len(), 2)?;
-
-            let left = handle_expression(
-                key.clone() + ".expressions[0]",
-                &operator.expressions[0],
-                account_chars,
-                account,
-            )?;
-            let right = handle_expression(
-                key.clone() + ".expressions[1]",
-                &operator.expressions[1],
-                account_chars,
-                account,
-            )?;
-
-            assert_param_type_equal(key.clone() + ".expressions", &left, &right)?;
-            left.$method(&right).map_err(|err| ASTError::OperatorExecuteFailed {
-                key,
-                operator: operator.symbol.to_string(),
-                reason: err.to_string(),
-            })?
-        }};
-    }
-
     let ret = match operator.symbol {
-        SymbolType::And => {
-            assert_param_length_gte(key.clone() + ".expressions", operator.expressions.len(), 2)?;
-
-            let mut ret = true;
-            for (i, expression) in operator.expressions.iter().enumerate() {
-                let value = handle_expression(
-                    format!("{}.expressions[{}]", key, i),
-                    expression,
-                    account_chars,
-                    account,
-                )?;
-                match value {
-                    Value::Bool(val) => {
-                        if !val {
-                            ret = false;
-                        }
-                    }
-                    _ => {
-                        return Err(ASTError::ReturnTypeError {
-                            key: format!("{}.expressions[{}]", key, i),
-                            type_: ValueType::Bool,
-                        })
-                    }
-                }
-            }
-
-            ret
-        }
-        SymbolType::Or => {
-            assert_param_length_gte(key.clone() + ".expressions", operator.expressions.len(), 2)?;
-
-            let mut ret = false;
-            for (i, expression) in operator.expressions.iter().enumerate() {
-                let value = handle_expression(
-                    format!("{}.expressions[{}]", key, i),
-                    expression,
-                    account_chars,
-                    account,
-                )?;
-                match value {
-                    Value::Bool(val) => {
-                        if val {
-                            ret = true;
-                        }
-                    }
-                    _ => {
-                        return Err(ASTError::ReturnTypeError {
-                            key: format!("{}.expressions[{}]", key, i),
-                            type_: ValueType::Bool,
-                        })
-                    }
-                }
-            }
-
-            ret
-        }
-        SymbolType::Not => {
-            assert_param_length(key.clone() + ".expressions", operator.expressions.len(), 1)?;
-
-            let value = handle_expression(
-                key.clone() + ".expressions[0]",
-                &operator.expressions[0],
-                account_chars,
-                account,
-            )?;
-            match value {
-                Value::Bool(val) => !val,
-                _ => {
-                    return Err(ASTError::ReturnTypeError {
-                        key: key.clone() + ".expressions[0]",
-                        type_: ValueType::Bool,
-                    })
-                }
-            }
-        }
-        SymbolType::Equal => compare_values!(equal),
-        SymbolType::Gt => compare_values!(greater_than),
-        SymbolType::Gte => compare_values!(greater_than_or_equal),
-        SymbolType::Lt => compare_values!(less_than),
-        SymbolType::Lte => compare_values!(less_than_or_equal),
+        SymbolType::And => operator_and_or(&key, operator, account_chars, account, true)?,
+        SymbolType::Or => operator_and_or(&key, operator, account_chars, account, false)?,
+        SymbolType::Not => operator_not(&key, operator, account_chars, account)?,
+        SymbolType::Equal | SymbolType::Gt | SymbolType::Gte | SymbolType::Lt | SymbolType::Lte =>
+            operator_compare(&key, operator, account_chars, account, operator.symbol)?,
         // _ => todo!(),
     };
 
     Ok(Value::Bool(ret))
+}
+
+fn operator_and_or(
+    key: &str,
+    operator: &OperatorExpression,
+    account_chars: packed::AccountCharsReader,
+    account: &str,
+    is_and: bool,
+) -> Result<bool, ASTError> {
+    assert_param_length_gte(format!("{}.expressions", key), operator.expressions.len(), 2)?;
+
+    let mut ret = if is_and { true } else { false };
+    for (i, expression) in operator.expressions.iter().enumerate() {
+        let value = handle_expression(
+            format!("{}.expressions[{}]", key, i),
+            expression,
+            account_chars,
+            account,
+        )?;
+        match value {
+            Value::Bool(val) => {
+                if is_and {
+                    if !val {
+                        ret = false;
+                    }
+                } else {
+                    if val {
+                        ret = true;
+                    }
+                }
+            }
+            _ => {
+                return Err(ASTError::ParamTypeError {
+                    key: format!("{}.expressions[{}]", key, i),
+                    types: ValueType::Bool.to_string(),
+                })
+            }
+        }
+    }
+
+    Ok(ret)
+}
+
+fn operator_not(
+    key: &str,
+    operator: &OperatorExpression,
+    account_chars: packed::AccountCharsReader,
+    account: &str,
+) -> Result<bool, ASTError> {
+    assert_param_length(format!("{}.expressions", key), operator.expressions.len(), 1)?;
+
+    let value = handle_expression(
+        format!("{}.expressions[0]", key),
+        &operator.expressions[0],
+        account_chars,
+        account,
+    )?;
+    match value {
+        Value::Bool(val) => Ok(!val),
+        _ => {
+            return Err(ASTError::ParamTypeError {
+                key: format!("{}.expressions[0]", key),
+                types: ValueType::Bool.to_string(),
+            })
+        }
+    }
+}
+
+fn operator_compare(
+    key: &str,
+    operator: &OperatorExpression,
+    account_chars: packed::AccountCharsReader,
+    account: &str,
+    symbol_type: SymbolType,
+) -> Result<bool, ASTError> {
+    assert_param_length(format!("{}.expressions", key), operator.expressions.len(), 2)?;
+
+    let left = handle_expression(
+        format!("{}.expressions[0]", key),
+        &operator.expressions[0],
+        account_chars,
+        account,
+    )?;
+    let right = handle_expression(
+        format!("{}.expressions[1]", key),
+        &operator.expressions[1],
+        account_chars,
+        account,
+    )?;
+
+    if ![ValueType::Uint8, ValueType::Uint32, ValueType::Uint64].contains(&left.get_type()) {
+        return Err(ASTError::ParamTypeError {
+            key: format!("{}.expressions[0]", key),
+            types: format!("Uint8, Uint32, Uint64"),
+        });
+    }
+
+    left.compare(&right, symbol_type).map_err(|err| ASTError::ParamTypeError {
+        key: key.to_string(),
+        types: err.to_string(),
+    })
 }
 
 fn handle_function(
@@ -246,17 +246,12 @@ fn handle_function(
         FnName::IncludeChars | FnName::IncludeWords => call_fn!(include_chars, 2),
         FnName::OnlyIncludeCharset => call_fn!(only_include_charset, 2),
         FnName::InList => call_fn!(in_list, 2),
-    }
-    .map_err(|err| ASTError::FunctionExecuteFailed {
-        key: key.clone(),
-        name: function.name.to_string(),
-        reason: err.to_string(),
-    })?;
+    }?;
 
     if ret.get_type() != ValueType::Bool {
         return Err(ASTError::ReturnTypeError {
             key,
-            type_: ValueType::Bool,
+            types: ValueType::Bool.to_string(),
         });
     }
 
@@ -296,11 +291,16 @@ fn include_chars(
     account_chars: packed::AccountCharsReader,
     account: &str,
 ) -> Result<Value, ASTError> {
-    let account_chars_value = handle_expression(key.clone() + ".arguments[0]", &arguments[0], account_chars, account)?;
+    assert_param_expression!(format!("{}.arguments[0]", key), arguments[0], Expression::Variable(VariableExpression {
+        name: VarName::Account
+    }), format!("variable AccountChars"));
+
     let chars = handle_expression(key.clone() + ".arguments[1]", &arguments[1], account_chars, account)?;
 
-    match (account_chars_value, chars) {
-        (Value::String(account), Value::StringVec(chars)) => {
+    assert_param_expression!(format!("{}.arguments[1]", key), chars, Value::StringVec(_), format!("string[]"));
+
+    match chars {
+        Value::StringVec(chars) => {
             for char in chars.iter() {
                 if account.contains(char) {
                     return Ok(Value::Bool(true));
@@ -319,7 +319,13 @@ fn only_include_charset(
     account_chars: packed::AccountCharsReader,
     account: &str,
 ) -> Result<Value, ASTError> {
+    assert_param_expression!(format!("{}.arguments[0]", key), arguments[0], Expression::Variable(VariableExpression {
+        name: VarName::AccountChars
+    }), format!("variable AccountChars"));
+
     let charset = handle_expression(key.clone() + ".arguments[1]", &arguments[1], account_chars, account)?;
+
+    assert_param_expression!(format!("{}.arguments[1]", key), charset, Value::CharsetType(_), format!("charset_type"));
 
     let expected_charset = match charset {
         Value::CharsetType(charset) => charset,
@@ -347,14 +353,19 @@ fn in_list(
     account_chars: packed::AccountCharsReader,
     account: &str,
 ) -> Result<Value, ASTError> {
-    let account_var = handle_expression(key.clone() + ".arguments[0]", &arguments[0], account_chars, account)?;
+    assert_param_expression!(format!("{}.arguments[0]", key), arguments[0], Expression::Variable(VariableExpression {
+        name: VarName::Account
+    }), format!("variable AccountChars"));
 
     let account_list = handle_expression(key.clone() + ".arguments[1]", &arguments[1], account_chars, account)?;
 
-    match (account_var, account_list) {
-        (Value::String(account), Value::BinaryVec(account_list)) => {
+    assert_param_expression!(format!("{}.arguments[1]", key), account_list, Value::BinaryVec(_), format!("binary[]"));
+
+    match account_list {
+        Value::BinaryVec(account_list) => {
             let hash = blake2b_256(account);
             let account_id = hash[0..20].to_vec();
+            // println!("account_id = {:?}", hex::encode(&account_id));
             Ok(Value::Bool(account_list.contains(&account_id)))
         }
         _ => Err(ASTError::ValueTypeMismatch),
