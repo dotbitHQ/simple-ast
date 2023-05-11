@@ -374,10 +374,10 @@ fn in_list(
 
 #[cfg(test)]
 mod test {
+    use das_types_std::types;
     use serde_json::json;
 
     use super::*;
-    use das_types_std::types;
     use crate::util;
 
     #[test]
@@ -465,46 +465,48 @@ mod test {
 
     #[test]
     fn test_disabled_rule_skipping() {
-        let rules = vec![SubAccountRule {
-            index: 0,
-            name: "".to_string(),
-            note: "".to_string(),
-            price: 0,
-            status: SubAccountRuleStatus::Off,
-            ast: Expression::Operator(OperatorExpression {
-                symbol: SymbolType::And,
-                expressions: vec![
-                    Expression::Value(ValueExpression {
-                        value_type: ValueType::Bool,
-                        value: Value::Bool(true),
-                    }),
-                    Expression::Value(ValueExpression {
-                        value_type: ValueType::Bool,
-                        value: Value::Bool(true),
-                    }),
-                ],
-            }),
-        },
-        SubAccountRule {
-            index: 1,
-            name: "".to_string(),
-            note: "".to_string(),
-            price: 0,
-            status: SubAccountRuleStatus::On,
-            ast: Expression::Operator(OperatorExpression {
-                symbol: SymbolType::And,
-                expressions: vec![
-                    Expression::Value(ValueExpression {
-                        value_type: ValueType::Bool,
-                        value: Value::Bool(true),
-                    }),
-                    Expression::Value(ValueExpression {
-                        value_type: ValueType::Bool,
-                        value: Value::Bool(true),
-                    }),
-                ],
-            }),
-        }];
+        let rules = vec![
+            SubAccountRule {
+                index: 0,
+                name: "".to_string(),
+                note: "".to_string(),
+                price: 0,
+                status: SubAccountRuleStatus::Off,
+                ast: Expression::Operator(OperatorExpression {
+                    symbol: SymbolType::And,
+                    expressions: vec![
+                        Expression::Value(ValueExpression {
+                            value_type: ValueType::Bool,
+                            value: Value::Bool(true),
+                        }),
+                        Expression::Value(ValueExpression {
+                            value_type: ValueType::Bool,
+                            value: Value::Bool(true),
+                        }),
+                    ],
+                }),
+            },
+            SubAccountRule {
+                index: 1,
+                name: "".to_string(),
+                note: "".to_string(),
+                price: 0,
+                status: SubAccountRuleStatus::On,
+                ast: Expression::Operator(OperatorExpression {
+                    symbol: SymbolType::And,
+                    expressions: vec![
+                        Expression::Value(ValueExpression {
+                            value_type: ValueType::Bool,
+                            value: Value::Bool(true),
+                        }),
+                        Expression::Value(ValueExpression {
+                            value_type: ValueType::Bool,
+                            value: Value::Bool(true),
+                        }),
+                    ],
+                }),
+            },
+        ];
 
         let ret = match_rule_with_account_chars(&rules, packed::AccountChars::default().as_reader(), "").unwrap();
         assert!(ret.is_some());
@@ -514,82 +516,651 @@ mod test {
         assert_eq!(1, rule.index);
     }
 
-    #[test]
-    fn test_function_include_chars() {
+    fn test_operator_expression(expression: Expression) -> Value {
         let key = String::from(".");
-        let arguments = vec![
-            Expression::Variable(VariableExpression {
-                name: VarName::Account,
-            }),
-            Expression::Value(ValueExpression {
-                value_type: ValueType::StringVec,
-                value: Value::StringVec(vec!["🌈".to_string(), "✨".to_string()]),
-            }),
-        ];
         let account_chars = packed::AccountChars::default();
+        let account = "";
 
-        let false_account = "xxxxx";
-        let true_account = "xxxx🌈";
+        handle_expression(key, &expression, account_chars.as_reader(), account).unwrap()
+    }
 
-        let ret = include_chars(key.clone(), &arguments, account_chars.as_reader(), false_account).unwrap();
-        assert!(matches!(ret, Value::Bool(false)));
+    fn test_err_operator_expression(expression: Expression) -> Result<Value, ASTError> {
+        let key = String::from(".");
+        let account_chars = packed::AccountChars::default();
+        let account = "";
 
-        let ret = include_chars(key.clone(), &arguments, account_chars.as_reader(), true_account).unwrap();
+        handle_expression(key, &expression, account_chars.as_reader(), account)
+    }
+
+    #[test]
+    fn test_operator_and() {
+        let ret = test_operator_expression(Expression::Operator(OperatorExpression {
+            symbol: SymbolType::And,
+            expressions: vec![
+                Expression::Value(ValueExpression {
+                    value_type: ValueType::Bool,
+                    value: Value::Bool(true),
+                }),
+                Expression::Value(ValueExpression {
+                    value_type: ValueType::Bool,
+                    value: Value::Bool(true),
+                }),
+            ],
+        }));
         assert!(matches!(ret, Value::Bool(true)));
 
-
-        let arguments = vec![
-            Expression::Variable(VariableExpression {
-                name: VarName::Account,
-            }),
-            Expression::Value(ValueExpression {
-                value_type: ValueType::StringVec,
-                value: Value::StringVec(vec!["uni".to_string(), "meta".to_string()]),
-            }),
-        ];
-
-        let false_account = "xxxxxxx";
-        let true_account = "metaverse";
-
-        let ret = include_chars(key.clone(), &arguments, account_chars.as_reader(), false_account).unwrap();
+        let ret = test_operator_expression(Expression::Operator(OperatorExpression {
+            symbol: SymbolType::And,
+            expressions: vec![
+                Expression::Value(ValueExpression {
+                    value_type: ValueType::Bool,
+                    value: Value::Bool(true),
+                }),
+                Expression::Value(ValueExpression {
+                    value_type: ValueType::Bool,
+                    value: Value::Bool(false),
+                }),
+            ],
+        }));
         assert!(matches!(ret, Value::Bool(false)));
 
-        let ret = include_chars(key.clone(), &arguments, account_chars.as_reader(), true_account).unwrap();
+        let ret = test_operator_expression(Expression::Operator(OperatorExpression {
+            symbol: SymbolType::And,
+            expressions: vec![
+                Expression::Value(ValueExpression {
+                    value_type: ValueType::Bool,
+                    value: Value::Bool(false),
+                }),
+                Expression::Value(ValueExpression {
+                    value_type: ValueType::Bool,
+                    value: Value::Bool(false),
+                }),
+            ],
+        }));
+        assert!(matches!(ret, Value::Bool(false)));
+    }
+
+    #[test]
+    fn test_operator_and_param_type_error() {
+        let ret = test_err_operator_expression(Expression::Operator(OperatorExpression {
+            symbol: SymbolType::And,
+            expressions: vec![
+                Expression::Value(ValueExpression {
+                    value_type: ValueType::Bool,
+                    value: Value::Bool(true),
+                }),
+                Expression::Value(ValueExpression {
+                    value_type: ValueType::Uint32,
+                    value: Value::Uint32(1),
+                }),
+            ],
+        }));
+        assert!(matches!(ret, Err(ASTError::ParamTypeError { key: _, types: _ })));
+
+        let ret = test_err_operator_expression(Expression::Operator(OperatorExpression {
+            symbol: SymbolType::And,
+            expressions: vec![
+                Expression::Value(ValueExpression {
+                    value_type: ValueType::Bool,
+                    value: Value::Bool(true),
+                }),
+            ],
+        }));
+        assert!(matches!(ret, Err(ASTError::ParamLengthError { key: _, expected_length: _, length: _ })));
+    }
+
+    #[test]
+    fn test_operator_or() {
+        let ret = test_operator_expression(Expression::Operator(OperatorExpression {
+            symbol: SymbolType::Or,
+            expressions: vec![
+                Expression::Value(ValueExpression {
+                    value_type: ValueType::Bool,
+                    value: Value::Bool(true),
+                }),
+                Expression::Value(ValueExpression {
+                    value_type: ValueType::Bool,
+                    value: Value::Bool(false),
+                }),
+            ],
+        }));
+        assert!(matches!(ret, Value::Bool(true)));
+
+        let ret = test_operator_expression(Expression::Operator(OperatorExpression {
+            symbol: SymbolType::Or,
+            expressions: vec![
+                Expression::Value(ValueExpression {
+                    value_type: ValueType::Bool,
+                    value: Value::Bool(false),
+                }),
+                Expression::Value(ValueExpression {
+                    value_type: ValueType::Bool,
+                    value: Value::Bool(false),
+                }),
+            ],
+        }));
+        assert!(matches!(ret, Value::Bool(false)));
+
+        let ret = test_operator_expression(Expression::Operator(OperatorExpression {
+            symbol: SymbolType::Or,
+            expressions: vec![
+                Expression::Value(ValueExpression {
+                    value_type: ValueType::Bool,
+                    value: Value::Bool(true),
+                }),
+                Expression::Value(ValueExpression {
+                    value_type: ValueType::Bool,
+                    value: Value::Bool(true),
+                }),
+            ],
+        }));
         assert!(matches!(ret, Value::Bool(true)));
     }
 
     #[test]
-    fn test_only_include_charset() {
-        let key = String::from(".");
-        let arguments = vec![
-            Expression::Variable(VariableExpression {
-                name: VarName::AccountChars,
-            }),
-            Expression::Value(ValueExpression {
-                value_type: ValueType::CharsetType,
-                value: Value::CharsetType(CharSetType::Digit),
-            }),
-        ];
-        let false_account_chars: packed::AccountChars = vec![
-            types::AccountChar { char_set_type: CharSetType::Digit, char: String::new() },
-            types::AccountChar { char_set_type: CharSetType::Digit, char: String::new() },
-            types::AccountChar { char_set_type: CharSetType::Digit, char: String::new() },
-            types::AccountChar { char_set_type: CharSetType::Emoji, char: String::new() },
-        ].into();
-        let account = "111✨";
+    fn test_operator_or_param_error() {
+        let ret = test_err_operator_expression(Expression::Operator(OperatorExpression {
+            symbol: SymbolType::Or,
+            expressions: vec![
+                Expression::Value(ValueExpression {
+                    value_type: ValueType::Bool,
+                    value: Value::Bool(true),
+                }),
+                Expression::Value(ValueExpression {
+                    value_type: ValueType::Uint32,
+                    value: Value::Uint32(1),
+                }),
+            ],
+        }));
+        assert!(matches!(ret, Err(ASTError::ParamTypeError { key: _, types: _ })));
 
-        let ret = only_include_charset(key.clone(), &arguments, false_account_chars.as_reader(), account).unwrap();
+        let ret = test_err_operator_expression(Expression::Operator(OperatorExpression {
+            symbol: SymbolType::Or,
+            expressions: vec![
+                Expression::Value(ValueExpression {
+                    value_type: ValueType::Bool,
+                    value: Value::Bool(true),
+                }),
+            ],
+        }));
+        assert!(matches!(ret, Err(ASTError::ParamLengthError { key: _, expected_length: _, length: _ })));
+    }
+
+    #[test]
+    fn test_operator_not() {
+        let ret = test_operator_expression(Expression::Operator(OperatorExpression {
+            symbol: SymbolType::Not,
+            expressions: vec![Expression::Value(ValueExpression {
+                value_type: ValueType::Bool,
+                value: Value::Bool(true),
+            })],
+        }));
         assert!(matches!(ret, Value::Bool(false)));
 
-        let true_account_chars: packed::AccountChars = vec![
-            types::AccountChar { char_set_type: CharSetType::Digit, char: String::new() },
-            types::AccountChar { char_set_type: CharSetType::Digit, char: String::new() },
-            types::AccountChar { char_set_type: CharSetType::Digit, char: String::new() },
-            types::AccountChar { char_set_type: CharSetType::Digit, char: String::new() },
-        ].into();
-        let account = "1111";
-
-        let ret = only_include_charset(key.clone(), &arguments, true_account_chars.as_reader(), account).unwrap();
+        let ret = test_operator_expression(Expression::Operator(OperatorExpression {
+            symbol: SymbolType::Not,
+            expressions: vec![Expression::Value(ValueExpression {
+                value_type: ValueType::Bool,
+                value: Value::Bool(false),
+            })],
+        }));
         assert!(matches!(ret, Value::Bool(true)));
+    }
+
+    #[test]
+    fn test_operator_not_param_error() {
+        let ret = test_err_operator_expression(Expression::Operator(OperatorExpression {
+            symbol: SymbolType::Not,
+            expressions: vec![Expression::Value(ValueExpression {
+                value_type: ValueType::Uint32,
+                value: Value::Uint32(1),
+            })],
+        }));
+        assert!(matches!(ret, Err(ASTError::ParamTypeError { key: _, types: _ })));
+
+        let ret = test_err_operator_expression(Expression::Operator(OperatorExpression {
+            symbol: SymbolType::Not,
+            expressions: vec![Expression::Value(ValueExpression {
+                value_type: ValueType::Bool,
+                value: Value::Bool(false),
+            }), Expression::Value(ValueExpression {
+                value_type: ValueType::Bool,
+                value: Value::Bool(false),
+            })],
+        }));
+        assert!(matches!(ret, Err(ASTError::ParamLengthError { key: _, expected_length: _, length: _ })));
+    }
+
+    macro_rules! gen_compare_test {
+        (all $symbol_type: expr, $value_type: expr, $value_ty: ident => $ret_1: expr, $ret_2: expr, $ret_3: expr) => {
+            gen_compare_test!(
+                single
+                $symbol_type,
+                $value_type,
+                Value::$value_ty(1),
+                Value::$value_ty(0),
+                $ret_1
+            );
+            gen_compare_test!(
+                single
+                $symbol_type,
+                $value_type,
+                Value::$value_ty(0),
+                Value::$value_ty(1),
+                $ret_2
+            );
+            gen_compare_test!(
+                single
+                $symbol_type,
+                $value_type,
+                Value::$value_ty(1),
+                Value::$value_ty(1),
+                $ret_3
+            );
+        };
+        (single $symbol_type: expr, $value_type: expr, $value_1: expr, $value_2: expr, $result: expr) => {
+            let ret = test_operator_expression(Expression::Operator(OperatorExpression {
+                symbol: $symbol_type,
+                expressions: vec![
+                    Expression::Value(ValueExpression {
+                        value_type: $value_type,
+                        value: $value_1,
+                    }),
+                    Expression::Value(ValueExpression {
+                        value_type: $value_type,
+                        value: $value_2,
+                    }),
+                ],
+            }));
+            assert!(matches!(ret, Value::Bool($result)));
+        };
+        (all_err $symbol_type: expr) => {
+            gen_compare_test!(type_err $symbol_type, ValueExpression {
+                value_type: ValueType::Bool,
+                value: Value::Bool(true),
+            }, ValueExpression {
+                value_type: ValueType::Uint32,
+                value: Value::Uint32(1),
+            } => ASTError::ParamTypeError { key: _, types: _ });
+
+            gen_compare_test!(length_err $symbol_type, ValueExpression {
+                value_type: ValueType::Uint8,
+                value: Value::Uint8(1),
+            } => ASTError::ParamLengthError { key: _, expected_length: _, length: _ });
+        };
+        (type_err $symbol_type: expr, $value_1: expr, $value_2: expr => $error: pat_param) => {
+            let ret = test_err_operator_expression(Expression::Operator(OperatorExpression {
+                symbol: $symbol_type,
+                expressions: vec![Expression::Value($value_1), Expression::Value($value_2)],
+            }));
+            // println!("ret = {:?}", ret);
+            assert!(matches!(ret, Err($error)));
+        };
+        (length_err $symbol_type: expr, $value_1: expr => $error: pat_param) => {
+            let ret = test_err_operator_expression(Expression::Operator(OperatorExpression {
+                symbol: $symbol_type,
+                expressions: vec![
+                    Expression::Value($value_1),
+                    Expression::Value($value_1),
+                    Expression::Value($value_1),
+                ],
+            }));
+            // println!("ret = {:?}", ret);
+            assert!(matches!(ret, Err($error)));
+        };
+    }
+
+    #[test]
+    fn test_operator_gt() {
+        gen_compare_test!(all SymbolType::Gt, ValueType::Uint8, Uint8 => true, false, false);
+        gen_compare_test!(all SymbolType::Gt, ValueType::Uint32, Uint32 => true, false, false);
+        gen_compare_test!(all SymbolType::Gt, ValueType::Uint64, Uint64 => true, false, false);
+    }
+
+    #[test]
+    fn test_operator_gt_param_error() {
+        gen_compare_test!(all_err SymbolType::Gt);
+    }
+
+    #[test]
+    fn test_operator_gte() {
+        gen_compare_test!(all SymbolType::Gte, ValueType::Uint8, Uint8 => true, false, true);
+        gen_compare_test!(all SymbolType::Gte, ValueType::Uint32, Uint32 => true, false, true);
+        gen_compare_test!(all SymbolType::Gte, ValueType::Uint64, Uint64 => true, false, true);
+    }
+
+    #[test]
+    fn test_operator_gte_param_error() {
+        gen_compare_test!(all_err SymbolType::Gte);
+    }
+
+    #[test]
+    fn test_operator_lt() {
+        gen_compare_test!(all SymbolType::Lt, ValueType::Uint8, Uint8 => false, true, false);
+        gen_compare_test!(all SymbolType::Lt, ValueType::Uint32, Uint32 => false, true, false);
+        gen_compare_test!(all SymbolType::Lt, ValueType::Uint64, Uint64 => false, true, false);
+    }
+
+    #[test]
+    fn test_operator_lt_param_error() {
+        gen_compare_test!(all_err SymbolType::Lt);
+    }
+
+    #[test]
+    fn test_operator_lte() {
+        gen_compare_test!(all SymbolType::Lte, ValueType::Uint8, Uint8 => false, true, true);
+        gen_compare_test!(all SymbolType::Lte, ValueType::Uint32, Uint32 => false, true, true);
+        gen_compare_test!(all SymbolType::Lte, ValueType::Uint64, Uint64 => false, true, true);
+    }
+
+    #[test]
+    fn test_operator_lte_param_error() {
+        gen_compare_test!(all_err SymbolType::Lte);
+    }
+
+    #[test]
+    fn test_operator_eq() {
+        gen_compare_test!(all SymbolType::Equal, ValueType::Uint8, Uint8 => false, false, true);
+        gen_compare_test!(all SymbolType::Equal, ValueType::Uint32, Uint32 => false, false, true);
+        gen_compare_test!(all SymbolType::Equal, ValueType::Uint64, Uint64 => false, false, true);
+    }
+
+    #[test]
+    fn test_operator_eq_param_error() {
+        gen_compare_test!(all_err SymbolType::Equal);
+    }
+
+    fn test_function_expression(expression: Expression, account_chars: types::AccountChars, account: &str) -> Value {
+        let key = String::from(".");
+        let account_chars: packed::AccountChars = account_chars.into();
+
+        handle_expression(key, &expression, account_chars.as_reader(), account).unwrap()
+    }
+
+    fn test_err_function_expression(expression: Expression, account_chars: types::AccountChars, account: &str) -> Result<Value, ASTError> {
+        let key = String::from(".");
+        let account_chars: packed::AccountChars = account_chars.into();
+
+        handle_expression(key, &expression, account_chars.as_reader(), account)
+    }
+
+    #[test]
+    fn test_function_include_chars() {
+        fn inner(string_vec: Vec<String>, account: &str) -> Value {
+            test_function_expression(Expression::Function(FunctionExpression {
+                name: FnName::IncludeChars,
+                arguments: vec![
+                    Expression::Variable(VariableExpression { name: VarName::Account }),
+                    Expression::Value(ValueExpression {
+                        value_type: ValueType::StringVec,
+                        value: Value::StringVec(string_vec),
+                    }),
+                ]
+            }), packed::AccountChars::default().into(), account)
+        }
+
+        let ret = inner(vec!["🌈".to_string(), "✨".to_string()], "xxxxx.ast.bit");
+        assert!(matches!(ret, Value::Bool(false)));
+
+        let ret = inner(vec!["🌈".to_string(), "✨".to_string()], "xxxx🌈.ast.bit");
+        assert!(matches!(ret, Value::Bool(true)));
+
+        let ret = inner(vec!["uni".to_string(), "meta".to_string()], "xxxxxxx.ast.bit");
+        assert!(matches!(ret, Value::Bool(false)));
+
+        let ret = inner(vec!["uni".to_string(), "meta".to_string()], "metaverse.ast.bit");
+        assert!(matches!(ret, Value::Bool(true)));
+    }
+
+    #[test]
+    fn test_function_include_chars_param_error() {
+        let ret = test_err_function_expression(Expression::Function(FunctionExpression {
+            name: FnName::IncludeChars,
+            arguments: vec![
+                Expression::Variable(VariableExpression { name: VarName::AccountChars }),
+                Expression::Value(ValueExpression {
+                    value_type: ValueType::StringVec,
+                    value: Value::StringVec(vec!["uni".to_string(), "meta".to_string()]),
+                }),
+            ]
+        }), vec![], "xxxxxxx.ast.bit");
+        assert!(matches!(ret, Err(ASTError::ParamTypeError { key: _, types: _ })));
+
+        let ret = test_err_function_expression(Expression::Function(FunctionExpression {
+            name: FnName::IncludeChars,
+            arguments: vec![
+                Expression::Variable(VariableExpression { name: VarName::Account }),
+                Expression::Value(ValueExpression {
+                    value_type: ValueType::String,
+                    value: Value::String("uni".to_string()),
+                }),
+            ]
+        }), vec![], "xxxxxxx.ast.bit");
+        assert!(matches!(ret, Err(ASTError::ParamTypeError { key: _, types: _ })));
+
+        let ret = test_err_function_expression(Expression::Function(FunctionExpression {
+            name: FnName::IncludeChars,
+            arguments: vec![
+                Expression::Variable(VariableExpression { name: VarName::Account }),
+                Expression::Value(ValueExpression {
+                    value_type: ValueType::StringVec,
+                    value: Value::StringVec(vec!["uni".to_string(), "meta".to_string()]),
+                }),
+                Expression::Variable(VariableExpression { name: VarName::Account }),
+            ]
+        }), vec![], "xxxxxxx.ast.bit");
+        assert!(matches!(ret, Err(ASTError::ParamLengthError { key: _, expected_length: _, length: _ })));
+    }
+
+    #[test]
+    fn test_function_only_include_charset() {
+        fn inner(account_chars: types::AccountChars, account: &str) -> Value {
+            test_function_expression(Expression::Function(FunctionExpression {
+                name: FnName::OnlyIncludeCharset,
+                arguments: vec![
+                    Expression::Variable(VariableExpression {
+                        name: VarName::AccountChars,
+                    }),
+                    Expression::Value(ValueExpression {
+                        value_type: ValueType::CharsetType,
+                        value: Value::CharsetType(CharSetType::Digit),
+                    }),
+                ]
+            }), account_chars, account)
+        }
+
+        let ret = inner(vec![
+            types::AccountChar {
+                char_set_type: CharSetType::Digit,
+                char: String::new(),
+            },
+            types::AccountChar {
+                char_set_type: CharSetType::Digit,
+                char: String::new(),
+            },
+            types::AccountChar {
+                char_set_type: CharSetType::Digit,
+                char: String::new(),
+            },
+            types::AccountChar {
+                char_set_type: CharSetType::Emoji,
+                char: String::new(),
+            },
+        ], "111✨.ast.bit");
+        assert!(matches!(ret, Value::Bool(false)));
+
+        let ret = inner(vec![
+            types::AccountChar {
+                char_set_type: CharSetType::Digit,
+                char: String::new(),
+            },
+            types::AccountChar {
+                char_set_type: CharSetType::Digit,
+                char: String::new(),
+            },
+            types::AccountChar {
+                char_set_type: CharSetType::Digit,
+                char: String::new(),
+            },
+            types::AccountChar {
+                char_set_type: CharSetType::Digit,
+                char: String::new(),
+            },
+        ], "1111.ast.bit");
+        assert!(matches!(ret, Value::Bool(true)));
+    }
+
+    #[test]
+    fn test_function_only_include_charset_param_error() {
+        let account_chars = vec![
+            types::AccountChar {
+                char_set_type: CharSetType::Digit,
+                char: String::new(),
+            },
+            types::AccountChar {
+                char_set_type: CharSetType::Digit,
+                char: String::new(),
+            },
+            types::AccountChar {
+                char_set_type: CharSetType::Digit,
+                char: String::new(),
+            },
+            types::AccountChar {
+                char_set_type: CharSetType::Digit,
+                char: String::new(),
+            },
+        ];
+
+        let ret = test_err_function_expression(Expression::Function(FunctionExpression {
+            name: FnName::OnlyIncludeCharset,
+            arguments: vec![
+                Expression::Variable(VariableExpression {
+                    name: VarName::Account,
+                }),
+                Expression::Value(ValueExpression {
+                    value_type: ValueType::CharsetType,
+                    value: Value::CharsetType(CharSetType::Digit),
+                }),
+            ]
+        }), account_chars.clone(), "1111.ast.bit");
+        assert!(matches!(ret, Err(ASTError::ParamTypeError { key: _, types: _ })));
+
+        let ret = test_err_function_expression(Expression::Function(FunctionExpression {
+            name: FnName::OnlyIncludeCharset,
+            arguments: vec![
+                Expression::Variable(VariableExpression {
+                    name: VarName::AccountChars,
+                }),
+                Expression::Value(ValueExpression {
+                    value_type: ValueType::String,
+                    value: Value::String("test".to_string()),
+                }),
+            ]
+        }), account_chars.clone(), "1111.ast.bit");
+        assert!(matches!(ret, Err(ASTError::ParamTypeError { key: _, types: _ })));
+
+        let ret = test_err_function_expression(Expression::Function(FunctionExpression {
+            name: FnName::OnlyIncludeCharset,
+            arguments: vec![
+                Expression::Variable(VariableExpression {
+                    name: VarName::AccountChars,
+                }),
+                Expression::Value(ValueExpression {
+                    value_type: ValueType::CharsetType,
+                    value: Value::CharsetType(CharSetType::Digit),
+                }),
+                Expression::Variable(VariableExpression {
+                    name: VarName::AccountChars,
+                }),
+            ]
+        }), account_chars.clone(), "1111.ast.bit");
+        assert!(matches!(ret, Err(ASTError::ParamLengthError { key: _, expected_length: _, length: _ })));
+    }
+
+    #[test]
+    fn test_function_in_list() {
+        fn inner(list: Vec<Binary>, account: &str) -> Value {
+            test_function_expression(Expression::Function(FunctionExpression {
+                name: FnName::InList,
+                arguments: vec![
+                    Expression::Variable(VariableExpression {
+                        name: VarName::Account,
+                    }),
+                    Expression::Value(ValueExpression {
+                        value_type: ValueType::BinaryVec,
+                        value: Value::BinaryVec(list),
+                    }),
+                ]
+            }), vec![], account)
+        }
+
+        let ret = inner(
+            vec![
+                hex::decode("0000000000000000000000000000000000000000").unwrap(),
+                hex::decode("0000000000000000000000000000000000000001").unwrap(),
+                hex::decode("0000000000000000000000000000000000000002").unwrap(),
+                hex::decode("80165a04a62a5328e0b95ed3301ee4837e8075f7").unwrap(),
+            ],
+            "1111.ast.bit",
+        );
+        assert!(matches!(ret, Value::Bool(true)));
+
+        let ret = inner(
+            vec![
+                hex::decode("0000000000000000000000000000000000000000").unwrap(),
+                hex::decode("0000000000000000000000000000000000000001").unwrap(),
+                hex::decode("0000000000000000000000000000000000000002").unwrap(),
+            ],
+            "1111.ast.bit",
+        );
+        assert!(matches!(ret, Value::Bool(false)));
+    }
+
+    #[test]
+    fn test_function_in_list_param_error() {
+        let ret = test_err_function_expression(Expression::Function(FunctionExpression {
+            name: FnName::InList,
+            arguments: vec![
+                Expression::Variable(VariableExpression {
+                    name: VarName::AccountChars,
+                }),
+                Expression::Value(ValueExpression {
+                    value_type: ValueType::BinaryVec,
+                    value: Value::BinaryVec(vec![]),
+                }),
+            ]
+        }), vec![], "1111.ast.bit");
+        assert!(matches!(ret, Err(ASTError::ParamTypeError { key: _, types: _ })));
+
+        let ret = test_err_function_expression(Expression::Function(FunctionExpression {
+            name: FnName::InList,
+            arguments: vec![
+                Expression::Variable(VariableExpression {
+                    name: VarName::Account,
+                }),
+                Expression::Value(ValueExpression {
+                    value_type: ValueType::Binary,
+                    value: Value::Binary(vec![]),
+                }),
+            ]
+        }), vec![], "1111.ast.bit");
+        assert!(matches!(ret, Err(ASTError::ParamTypeError { key: _, types: _ })));
+
+        let ret = test_err_function_expression(Expression::Function(FunctionExpression {
+            name: FnName::InList,
+            arguments: vec![
+                Expression::Variable(VariableExpression {
+                    name: VarName::Account,
+                }),
+                Expression::Value(ValueExpression {
+                    value_type: ValueType::BinaryVec,
+                    value: Value::BinaryVec(vec![]),
+                }),
+                Expression::Variable(VariableExpression {
+                    name: VarName::Account,
+                }),
+            ]
+        }), vec![], "1111.ast.bit");
+        assert!(matches!(ret, Err(ASTError::ParamLengthError { key: _, expected_length: _, length: _ })));
     }
 }
