@@ -278,7 +278,6 @@ checksum = "b365fabc795046672053e29c954733ec3b05e4be654ab130fe8f1f94d7051f35"
 [[package]]
 name = "das-types"
 version = "1.11.0"
-source = "git+ssh://git@github.com/dotbitHQ/das-types-private.git?rev=c9c322b7dd#c9c322b7ddd25756adbbc90cb13381038e7866da"
 dependencies = [
  "ckb-std",
  "molecule",
@@ -289,7 +288,6 @@ dependencies = [
 [[package]]
 name = "das-types-std"
 version = "1.11.0"
-source = "git+ssh://git@github.com/dotbitHQ/das-types-private.git?rev=236db7906f#236db7906f7a95624731ea7f7be5528247598246"
 dependencies = [
  "ckb-types",
  "molecule",
@@ -961,3 +959,7 @@ checksum = "61de7bac303dc551fe038e2b3cef0f571087a47571ea6e79a87692ac99b99699"
 dependencies = [
  "memchr",
 ]
+
+[[patch.unused]]
+name = "das-sandbox"
+version = "1.8.1"

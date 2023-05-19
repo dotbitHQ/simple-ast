@@ -79,6 +79,11 @@ pub fn blake2b_256<T: AsRef<[u8]>>(s: T) -> [u8; 32] {
     result
 }
 
+pub fn get_account_without_suffix(input: &str) -> String {
+    let mut iter = input.split('.');
+    iter.next().unwrap().to_string()
+}
+
 pub fn hex_to_bytes(key: String, mut input: &str) -> Result<Vec<u8>, ASTError> {
     input = input.trim_start_matches("0x");
     hex::decode(input).map_err(|_| ASTError::ParseHexFailed { key: key })

@@ -221,6 +221,9 @@ pub enum FnName {
     IncludeWords,
     OnlyIncludeCharset,
     InList,
+    IncludeCharset,
+    StartsWith,
+    EndsWith,
 }
 
 impl Into<packed::Byte> for FnName {
