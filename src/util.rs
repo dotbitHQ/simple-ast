@@ -1,5 +1,5 @@
 #[cfg(feature = "no_std")]
-use alloc::{format, string::String};
+use alloc::{format, string::String, string::ToString};
 #[cfg(feature = "std")]
 use std::str::FromStr;
 
