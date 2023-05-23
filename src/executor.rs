@@ -4,11 +4,13 @@ use alloc::format;
 use alloc::string::String;
 #[cfg(feature = "no_std")]
 use alloc::string::ToString;
-
 #[cfg(feature = "no_std")]
 use das_types::{constants::*, packed, prelude::*};
+
 #[cfg(feature = "std")]
 use das_types_std::{constants::*, packed, prelude::*};
+#[cfg(feature = "std")]
+use std::format;
 
 use crate::error::ASTError;
 use crate::types::*;
@@ -82,7 +84,7 @@ pub fn match_rule_with_account_chars<'a>(
             }
         }
 
-        let value = handle_expression(format!("rules[{}].ast", i), &rule.ast, account_chars, account)?;
+        let value = handle_expression(&format!("rules[{}].ast", i), &rule.ast, account_chars, account)?;
         let ret = assert_and_get_return!(format!("rules[{}]", i), value, Bool);
 
         if ret {
@@ -94,29 +96,27 @@ pub fn match_rule_with_account_chars<'a>(
 }
 
 fn handle_expression(
-    key: String,
+    key: &str,
     ast: &Expression,
     account_chars: packed::AccountCharsReader,
     account: &str,
 ) -> Result<Value, ASTError> {
-    let value = match ast {
+    Ok(match ast {
         Expression::Operator(operator) => handle_operator(key, operator, account_chars, account)?,
         Expression::Function(function) => handle_function(key, function, account_chars, account)?,
         Expression::Variable(variable) => handle_variable(key, variable, account_chars, account)?,
         Expression::Value(value) => value.value.clone(),
         // _ => todo!()
-    };
-
-    Ok(value)
+    })
 }
 
 fn handle_operator(
-    key: String,
+    key: &str,
     operator: &OperatorExpression,
     account_chars: packed::AccountCharsReader,
     account: &str,
 ) -> Result<Value, ASTError> {
-    let ret = match operator.symbol {
+    Ok(Value::Bool(match operator.symbol {
         SymbolType::And => operator_and_or(&key, operator, account_chars, account, true)?,
         SymbolType::Or => operator_and_or(&key, operator, account_chars, account, false)?,
         SymbolType::Not => operator_not(&key, operator, account_chars, account)?,
@@ -124,9 +124,7 @@ fn handle_operator(
             operator_compare(&key, operator, account_chars, account, operator.symbol)?
         }
         // _ => todo!(),
-    };
-
-    Ok(Value::Bool(ret))
+    }))
 }
 
 fn operator_and_or(
@@ -141,7 +139,7 @@ fn operator_and_or(
     let mut ret = if is_and { true } else { false };
     for (i, expression) in operator.expressions.iter().enumerate() {
         let value = handle_expression(
-            format!("{}.expressions[{}]", key, i),
+            &format!("{}.expressions[{}]", key, i),
             expression,
             account_chars,
             account,
@@ -179,7 +177,7 @@ fn operator_not(
     assert_param_length(format!("{}.expressions", key), operator.expressions.len(), 1)?;
 
     let value = handle_expression(
-        format!("{}.expressions[0]", key),
+        &format!("{}.expressions[0]", key),
         &operator.expressions[0],
         account_chars,
         account,
@@ -205,13 +203,13 @@ fn operator_compare(
     assert_param_length(format!("{}.expressions", key), operator.expressions.len(), 2)?;
 
     let left = handle_expression(
-        format!("{}.expressions[0]", key),
+        &format!("{}.expressions[0]", key),
         &operator.expressions[0],
         account_chars,
         account,
     )?;
     let right = handle_expression(
-        format!("{}.expressions[1]", key),
+        &format!("{}.expressions[1]", key),
         &operator.expressions[1],
         account_chars,
         account,
@@ -232,15 +230,15 @@ fn operator_compare(
 }
 
 fn handle_function(
-    key: String,
+    key: &str,
     function: &FunctionExpression,
     account_chars: packed::AccountCharsReader,
     account: &str,
 ) -> Result<Value, ASTError> {
     macro_rules! call_fn {
         ($fn_name: ident, $arg_len: expr) => {{
-            assert_param_length(key.clone() + ".arguments", function.arguments.len(), $arg_len)?;
-            $fn_name(key.clone(), &function.arguments, account_chars, account)
+            assert_param_length(format!("{}.arguments", key), function.arguments.len(), $arg_len.to_owned())?;
+            $fn_name(key, &function.arguments, account_chars, account)
         }};
     }
 
@@ -255,7 +253,7 @@ fn handle_function(
 
     if ret.get_type() != ValueType::Bool {
         return Err(ASTError::ReturnTypeError {
-            key,
+            key: key.to_string(),
             types: ValueType::Bool.to_string(),
         });
     }
@@ -264,7 +262,7 @@ fn handle_function(
 }
 
 fn handle_variable(
-    key: String,
+    key: &str,
     variable: &VariableExpression,
     account_chars: packed::AccountCharsReader,
     account: &str,
@@ -291,9 +289,9 @@ fn handle_variable(
 }
 
 fn include_chars(
-    key: String,
+    key: &str,
     arguments: &[Expression],
-    account_chars: packed::AccountCharsReader,
+    _account_chars: packed::AccountCharsReader,
     account: &str,
 ) -> Result<Value, ASTError> {
     assert_param_expression!(
@@ -303,19 +301,10 @@ fn include_chars(
         format!("variable AccountChars")
     );
 
-    let chars = handle_expression(key.clone() + ".arguments[1]", &arguments[1], account_chars, account)?;
-
-    assert_param_expression!(
-        format!("{}.arguments[1]", key),
-        chars,
-        Value::StringVec(_),
-        format!("string[]")
-    );
-
     let account_without_suffix = get_account_without_suffix(account);
 
-    match chars {
-        Value::StringVec(chars) => {
+    match &arguments[1] {
+        Expression::Value(ValueExpression { value_type: _, value: Value::StringVec(chars) }) => {
             for char in chars.iter() {
                 if account_without_suffix.contains(char) {
                     return Ok(Value::Bool(true));
@@ -324,14 +313,14 @@ fn include_chars(
 
             Ok(Value::Bool(false))
         }
-        _ => Err(ASTError::ValueTypeMismatch),
+        _ => Err(ASTError::ParamTypeError { key: format!("{}.arguments[1]", key), types: String::from("string[]") }),
     }
 }
 
 fn starts_with(
-    key: String,
+    key: &str,
     arguments: &[Expression],
-    account_chars: packed::AccountCharsReader,
+    _account_chars: packed::AccountCharsReader,
     account: &str,
 ) -> Result<Value, ASTError> {
     assert_param_expression!(
@@ -341,19 +330,10 @@ fn starts_with(
         format!("variable AccountChars")
     );
 
-    let chars = handle_expression(key.clone() + ".arguments[1]", &arguments[1], account_chars, account)?;
-
-    assert_param_expression!(
-        format!("{}.arguments[1]", key),
-        chars,
-        Value::StringVec(_),
-        format!("string[]")
-    );
-
     let account_without_suffix = get_account_without_suffix(account);
 
-    match chars {
-        Value::StringVec(chars) => {
+    match &arguments[1] {
+        Expression::Value(ValueExpression { value_type: _, value: Value::StringVec(chars) }) => {
             for char in chars.iter() {
                 if account_without_suffix.starts_with(char) {
                     return Ok(Value::Bool(true));
@@ -362,14 +342,14 @@ fn starts_with(
 
             Ok(Value::Bool(false))
         }
-        _ => Err(ASTError::ValueTypeMismatch),
+        _ => Err(ASTError::ParamTypeError { key: format!("{}.arguments[1]", key), types: String::from("string[]") }),
     }
 }
 
 fn ends_with(
-    key: String,
+    key: &str,
     arguments: &[Expression],
-    account_chars: packed::AccountCharsReader,
+    _account_chars: packed::AccountCharsReader,
     account: &str,
 ) -> Result<Value, ASTError> {
     assert_param_expression!(
@@ -379,19 +359,10 @@ fn ends_with(
         format!("variable AccountChars")
     );
 
-    let chars = handle_expression(key.clone() + ".arguments[1]", &arguments[1], account_chars, account)?;
-
-    assert_param_expression!(
-        format!("{}.arguments[1]", key),
-        chars,
-        Value::StringVec(_),
-        format!("string[]")
-    );
-
     let account_without_suffix = get_account_without_suffix(account);
 
-    match chars {
-        Value::StringVec(chars) => {
+    match &arguments[1] {
+        Expression::Value(ValueExpression { value_type: _, value: Value::StringVec(chars) }) => {
             for char in chars.iter() {
                 if account_without_suffix.ends_with(char) {
                     return Ok(Value::Bool(true));
@@ -400,15 +371,15 @@ fn ends_with(
 
             Ok(Value::Bool(false))
         }
-        _ => Err(ASTError::ValueTypeMismatch),
+        _ => Err(ASTError::ParamTypeError { key: format!("{}.arguments[1]", key), types: String::from("string[]") }),
     }
 }
 
 fn only_include_charset(
-    key: String,
+    key: &str,
     arguments: &[Expression],
     account_chars: packed::AccountCharsReader,
-    account: &str,
+    _account: &str,
 ) -> Result<Value, ASTError> {
     assert_param_expression!(
         format!("{}.arguments[0]", key),
@@ -419,18 +390,9 @@ fn only_include_charset(
         format!("variable AccountChars")
     );
 
-    let charset = handle_expression(key.clone() + ".arguments[1]", &arguments[1], account_chars, account)?;
-
-    assert_param_expression!(
-        format!("{}.arguments[1]", key),
-        charset,
-        Value::CharsetType(_),
-        format!("charset_type")
-    );
-
-    let expected_charset = match charset {
-        Value::CharsetType(charset) => charset,
-        _ => return Err(ASTError::ValueTypeMismatch),
+    let expected_charset = match &arguments[1] {
+        Expression::Value(ValueExpression { value_type: _, value: Value::CharsetType(charset) })=> charset,
+        _ => return Err(ASTError::ParamTypeError { key: format!("{}.arguments[1]", key), types: String::from("charset_type") }),
     };
 
     for item in account_chars.iter() {
@@ -440,7 +402,7 @@ fn only_include_charset(
             type_: charset_index,
         })?;
 
-        if expected_charset != charset {
+        if expected_charset != &charset {
             return Ok(Value::Bool(false));
         }
     }
@@ -449,10 +411,10 @@ fn only_include_charset(
 }
 
 fn include_charset(
-    key: String,
+    key: &str,
     arguments: &[Expression],
     account_chars: packed::AccountCharsReader,
-    account: &str,
+    _account: &str,
 ) -> Result<Value, ASTError> {
     assert_param_expression!(
         format!("{}.arguments[0]", key),
@@ -463,18 +425,9 @@ fn include_charset(
         format!("variable AccountChars")
     );
 
-    let charset = handle_expression(key.clone() + ".arguments[1]", &arguments[1], account_chars, account)?;
-
-    assert_param_expression!(
-        format!("{}.arguments[1]", key),
-        charset,
-        Value::CharsetType(_),
-        format!("charset_type")
-    );
-
-    let expected_charset = match charset {
-        Value::CharsetType(charset) => charset,
-        _ => return Err(ASTError::ValueTypeMismatch),
+    let expected_charset = match &arguments[1] {
+        Expression::Value(ValueExpression { value_type: _, value: Value::CharsetType(charset) }) => charset,
+        _ => return Err(ASTError::ParamTypeError { key: format!("{}.arguments[1]", key), types: String::from("charset_type") }),
     };
 
     for item in account_chars.iter() {
@@ -484,7 +437,7 @@ fn include_charset(
             type_: charset_index,
         })?;
 
-        if expected_charset == charset {
+        if expected_charset == &charset {
             return Ok(Value::Bool(true));
         }
     }
@@ -493,9 +446,9 @@ fn include_charset(
 }
 
 fn in_list(
-    key: String,
+    key: &str,
     arguments: &[Expression],
-    account_chars: packed::AccountCharsReader,
+    _account_chars: packed::AccountCharsReader,
     account: &str,
 ) -> Result<Value, ASTError> {
     assert_param_expression!(
@@ -505,23 +458,14 @@ fn in_list(
         format!("variable AccountChars")
     );
 
-    let account_list = handle_expression(key.clone() + ".arguments[1]", &arguments[1], account_chars, account)?;
-
-    assert_param_expression!(
-        format!("{}.arguments[1]", key),
-        account_list,
-        Value::BinaryVec(_),
-        format!("binary[]")
-    );
-
-    match account_list {
-        Value::BinaryVec(account_list) => {
+    match &arguments[1] {
+        Expression::Value(ValueExpression { value_type: _, value: Value::BinaryVec(account_list) }) => {
             let hash = blake2b_256(account);
             let account_id = hash[0..20].to_vec();
             // println!("account_id = {:?}", hex::encode(&account_id));
             Ok(Value::Bool(account_list.contains(&account_id)))
         }
-        _ => Err(ASTError::ValueTypeMismatch),
+        _ => Err(ASTError::ParamTypeError { key: format!("{}.arguments[1]", key), types: String::from("binary[]") }),
     }
 }
 
@@ -670,7 +614,7 @@ mod test {
     }
 
     fn test_operator_expression(expression: Expression) -> Value {
-        let key = String::from(".");
+        let key = ".";
         let account_chars = packed::AccountChars::default();
         let account = "";
 
@@ -678,7 +622,7 @@ mod test {
     }
 
     fn test_err_operator_expression(expression: Expression) -> Result<Value, ASTError> {
-        let key = String::from(".");
+        let key = ".";
         let account_chars = packed::AccountChars::default();
         let account = "";
 
@@ -1044,7 +988,7 @@ mod test {
     }
 
     fn test_function_expression(expression: Expression, account_chars: types::AccountChars, account: &str) -> Value {
-        let key = String::from(".");
+        let key = ".";
         let account_chars: packed::AccountChars = account_chars.into();
 
         match handle_expression(key, &expression, account_chars.as_reader(), account) {
@@ -1060,7 +1004,7 @@ mod test {
         account_chars: types::AccountChars,
         account: &str,
     ) -> Result<Value, ASTError> {
-        let key = String::from(".");
+        let key = ".";
         let account_chars: packed::AccountChars = account_chars.into();
 
         handle_expression(key, &expression, account_chars.as_reader(), account)
