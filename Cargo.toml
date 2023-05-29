@@ -44,8 +44,8 @@ strum = { version = "0.24", features = ["derive"], default-features = false, opt
 # dotbit
 blake2b-rs = { version = "0.2", optional = true }
 blake2b-ref = { version = "0.3", optional = true }
-das-types = { git = "ssh://git@github.com/dotbitHQ/das-types-private.git", rev = "cccfabfe2e", optional = true, default-features = false }
-das-types-std = { git = "ssh://git@github.com/dotbitHQ/das-types-private.git", rev = "1ea3f0dc52", optional = true }
+das-types = { git = "ssh://git@github.com/dotbitHQ/das-types-private.git", rev = "c9c322b7dd", optional = true, default-features = false }
+das-types-std = { git = "ssh://git@github.com/dotbitHQ/das-types-private.git", rev = "236db7906f", optional = true }
 
 [dev-dependencies]
 env_logger = "0.10.0"
